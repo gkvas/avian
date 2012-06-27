@@ -202,7 +202,7 @@ ifneq (,$(filter i386 x86_64,$(arch)))
 endif
 
 build-cflags = $(common-cflags) -fPIC -fvisibility=hidden \
-	"-I$(JAVA_HOME)/include/linux" -I$(src) -pthread
+	"-I$(JAVA_HOME)/include/linux" -I/home/gernot/libs/include -I$(src) -pthread  
 
 converter-cflags = -D__STDC_CONSTANT_MACROS -Isrc/binaryToObject -Isrc/ \
 	-fno-rtti -fno-exceptions \
@@ -216,7 +216,7 @@ common-lflags = -lm -lz $(classpath-lflags)
 
 build-lflags = -lz -lpthread -ldl
 
-lflags = $(common-lflags) -lpthread -ldl
+lflags = $(common-lflags) -lpthread -ldl -L/home/gernot/libs/lib
 
 version-script-flag = -Wl,--version-script=openjdk.ld
 
@@ -276,9 +276,8 @@ ifeq ($(arch),arm)
 
 	ifeq ($(build-platform),darwin)
 		ios = true
-	else
-		no-psabi = -Wno-psabi
-		cflags += -marm $(no-psabi)
+	else		
+		cflags += -marm
 	endif
 
 	ifneq ($(arch),$(build-arch))
@@ -290,11 +289,11 @@ ifeq ($(arch),arm)
 			ranlib = $(ios-bin)/ranlib
 			strip = $(ios-bin)/strip
 		else
-			cxx = arm-linux-gnueabi-g++
-			cc = arm-linux-gnueabi-gcc
-			ar = arm-linux-gnueabi-ar
-			ranlib = arm-linux-gnueabi-ranlib
-			strip = arm-linux-gnueabi-strip
+			cxx = arm-v5te-linux-gnueabi-g++
+			cc = arm-v5te-linux-gnueabi-gcc
+			ar = arm-v5te-linux-gnueabi-ar
+			ranlib = arm-v5te-linux-gnueabi-ranlib
+			strip = arm-v5te-linux-gnueabi-strip
 		endif
 	endif
 endif
@@ -442,6 +441,21 @@ ifeq ($(platform),windows)
 		strip = x86_64-w64-mingw32-strip
 		inc = "$(win64)/include"
 		lib = "$(win64)/lib"
+	else
+		shared += -Wl,--add-stdcall-alias
+	endif
+
+	ifeq ($(arch),arm)
+		ifeq ($(build-platform),cygwin)
+			build-cxx = x86_64-w64-mingw32-g++
+			build-cc = x86_64-w64-mingw32-gcc
+		endif
+		cxx = arm-mingw32ce-g++ $(mflag)
+		cc = arm-mingw32ce-gcc $(mflag)
+		dlltool = arm-mingw32ce-dlltool
+		ar = arm-mingw32ce-ar
+		ranlib = arm-mingw32ce-ranlib
+		strip = arm-mingw32ce-strip
 	else
 		shared += -Wl,--add-stdcall-alias
 	endif
