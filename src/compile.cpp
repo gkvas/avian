@@ -8249,15 +8249,15 @@ class ArgumentList {
         break;
 
       case 'D':
-        addLong(arguments[index++].d);
+        addLong(doubleToBits(arguments[index++].d));
         break;
 
       case 'F':
-        addLong(arguments[index++].f);
+        addInt(floatToBits(arguments[index++].f));
         break;
 
       default:
-        addLong(arguments[index++].i);
+        addInt(arguments[index++].i);
         break;        
       }
     }
@@ -8614,6 +8614,8 @@ class MyProcessor: public Processor {
     t->codeImage = codeImage;
     t->thunkTable = thunkTable;
 
+#if TARGET_BYTES_PER_WORD == BYTES_PER_WORD
+
     int mismatches =
       checkConstant(t, TARGET_THREAD_EXCEPTION, &Thread::exception, "TARGET_THREAD_EXCEPTION") +
       checkConstant(t, TARGET_THREAD_EXCEPTIONSTACKADJUSTMENT, &MyThread::exceptionStackAdjustment, "TARGET_THREAD_EXCEPTIONSTACKADJUSTMENT") +
@@ -8634,6 +8636,8 @@ class MyProcessor: public Processor {
       fprintf(stderr, "%d constant mismatches\n", mismatches);
       abort(t);
     }
+
+#endif
 
     t->init();
 
