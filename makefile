@@ -1044,7 +1044,7 @@ $(jni-objects): $(build)/%.o: $(classpath-src)/%.cpp
 
 $(static-library): $(vm-objects) $(classpath-objects) $(vm-heapwalk-objects) \
 		$(javahome-object) $(boot-javahome-object) $(lzma-decode-objects)
-	@echo "creating $(@)"
+	@echo "creating static library $(@)"
 	rm -rf $(@)
 	$(ar) cru $(@) $(^)
 	$(ranlib) $(@)
@@ -1059,7 +1059,7 @@ executable-objects = $(vm-objects) $(classpath-objects) $(driver-object) \
 	$(javahome-object) $(boot-javahome-object) $(lzma-decode-objects)
 
 $(executable): $(executable-objects)
-	@echo "linking $(@)"
+	@echo "linking executable $(@)"
 ifeq ($(platform),windows)
 ifdef msvc
 	$(ld) $(lflags) $(executable-objects) -out:$(@) -PDB:$(@).pdb \
@@ -1113,7 +1113,7 @@ $(dynamic-library): $(vm-objects) $(dynamic-object) $(classpath-objects) \
 		$(vm-heapwalk-objects) $(boot-object) $(vm-classpath-objects) \
 		$(classpath-libraries) $(javahome-object) $(boot-javahome-object) \
 		$(lzma-decode-objects)
-	@echo "linking $(@)"
+	@echo "linking dynamic library $(@)"
 ifdef msvc
 	$(ld) $(shared) $(lflags) $(^) -out:$(@) -PDB:$(@).pdb \
 		-IMPLIB:$(build)/$(name).lib -MANIFESTFILE:$(@).manifest
@@ -1127,7 +1127,7 @@ endif
 # todo: the $(no-lto) flag below is due to odd undefined reference errors on
 # Ubuntu 11.10 which may be fixable without disabling LTO.
 $(executable-dynamic): $(driver-dynamic-objects) $(dynamic-library)
-	@echo "linking $(@)"
+	@echo "linking dynamic executable $(@)"
 ifdef msvc
 	$(ld) $(lflags) -LIBPATH:$(build) -DEFAULTLIB:$(name) \
 		-PDB:$(@).pdb -IMPLIB:$(@).lib $(driver-dynamic-objects) -out:$(@) \
