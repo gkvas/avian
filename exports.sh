@@ -1,0 +1,5 @@
+export PATH="/usr/local/bin:/usr/bin:/bin:/usr/X11R6/bin:/cygdrive/c/Program Files (x86)/Microsoft Visual Studio 9.0/Common7/IDE:/cygdrive/c/Program Files (x86)/Microsoft Visual Studio 9.0/VC/BIN:/cygdrive/c/Program Files (x86)/Microsoft Visual Studio 9.0/Common7/Tools:/cygdrive/c/WINDOWS/Microsoft.NET/Framework/v3.5:/cygdrive/c/WINDOWS/Microsoft.NET/Framework/v2.0.50727:/cygdrive/c/Program Files (x86)/Microsoft Visual Studio 9.0/VC/VCPackages:/cygdrive/c/Program Files (x86)/Microsoft SDKs/Windows/v6.0A/bin:/cygdrive/c/WINDOWS/system32:/cygdrive/c/WINDOWS:/cygdrive/c/WINDOWS/System32/Wbem"
+export LIBPATH="C:\WINDOWS\Microsoft.NET\Framework\v3.5;C:\WINDOWS\Microsoft.NET\Framework\v2.0.50727;C:\Program Files (x86)\Microsoft Visual Studio 9.0\VC\LIB;"
+export VCINSTALLDIR="C:\Program Files (x86)\Microsoft Visual Studio 9.0\VC"
+export LIB="C:\Program Files (x86)\Microsoft Visual Studio 9.0\VC\LIB;C:\Program Files\Microsoft SDKs\Windows\v6.0A\lib;"
+export INCLUDE="C:\Program Files (x86)\Microsoft Visual Studio 9.0\VC\INCLUDE;C:\Program Files\Microsoft SDKs\Windows\v6.0A\include;C:\avian\win32\include"

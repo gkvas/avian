@@ -224,6 +224,7 @@ build-system = posix
 
 system = posix
 asm = x86
+asm-suffix = .S
 
 pointer-size = 8
 
@@ -528,12 +529,14 @@ ld := $(cc)
 build-ld := $(build-cc)
 
 ifdef msvc
+    #asm-suffix = .asm
 	no-error =
 	windows-path = $(native-path)
 	windows-java-home := $(shell $(windows-path) "$(JAVA_HOME)")
 	zlib := $(shell $(windows-path) "$(win32)/msvc")
 	cxx = "$(msvc)/BIN/cl.exe"
 	cc = $(cxx)
+	#as = "$(msvc)/BIN/ml.exe"
 	ld = "$(msvc)/BIN/link.exe"
 	mt = "mt.exe"
 	cflags = -nologo -DAVIAN_VERSION=\"$(version)\" -D_JNI_IMPLEMENTATION_ \
@@ -543,7 +546,7 @@ ifdef msvc
 		-I"$(windows-java-home)/include" -I"$(windows-java-home)/include/win32" \
 		-DTARGET_BYTES_PER_WORD=$(pointer-size)
 
-  ifneq ($(lzma),)
+	ifneq ($(lzma),)
 		cflags += -I$(shell $(windows-path) "$(lzma)")
 	endif
 
@@ -572,7 +575,7 @@ endif
 
 c-objects = $(foreach x,$(1),$(patsubst $(2)/%.c,$(3)/%.o,$(x)))
 cpp-objects = $(foreach x,$(1),$(patsubst $(2)/%.cpp,$(3)/%.o,$(x)))
-asm-objects = $(foreach x,$(1),$(patsubst $(2)/%.S,$(3)/%-asm.o,$(x)))
+asm-objects = $(foreach x,$(1),$(patsubst $(2)/%$(asm-suffix),$(3)/%-asm.o,$(x)))
 java-classes = $(foreach x,$(1),$(patsubst $(2)/%.java,$(3)/%.class,$(x)))
 
 generated-code = \
@@ -598,7 +601,7 @@ vm-sources = \
 	$(src)/jnienv.cpp \
 	$(src)/process.cpp
 
-vm-asm-sources = $(src)/$(asm).S
+vm-asm-sources = $(src)/$(asm)$(asm-suffix)
 
 target-asm = $(asm)
 
@@ -607,7 +610,7 @@ ifeq ($(process),compile)
 		$(src)/compiler.cpp \
 		$(src)/$(target-asm).cpp
 
-	vm-asm-sources += $(src)/compile-$(asm).S
+	vm-asm-sources += $(src)/compile-$(asm)$(asm-suffix)
 endif
 
 vm-cpp-objects = $(call cpp-objects,$(vm-sources),$(src),$(build))
@@ -894,7 +897,7 @@ clean:
 	@echo "removing build"
 	rm -rf build
 
-$(build)/compile-x86-asm.o: $(src)/continuations-x86.S
+$(build)/compile-x86-asm.o: $(src)/continuations-x86$(asm-suffix)
 
 gen-arg = $(shell echo $(1) | sed -e 's:$(build)/type-\(.*\)\.cpp:\1:')
 $(generated-code): %.cpp: $(src)/types.def $(generator) $(classpath-dep)
@@ -937,13 +940,13 @@ $(test-extra-dep): $(test-extra-sources)
 	@touch $(@)
 
 define compile-object
-	@echo "compiling $(@)"
+	@echo "compiling $(<) to $(@)"
 	@mkdir -p $(dir $(@))
 	$(cxx) $(cflags) -c $$($(windows-path) $(<)) $(call output,$(@))
 endef
 
 define compile-asm-object
-	@echo "compiling $(@)"
+	@echo "compiling $(<) to $(@)"
 	@mkdir -p $(dir $(@))
 	$(as) -I$(src) $(asmflags) -c $(<) -o $(@)
 endef
@@ -952,11 +955,11 @@ $(vm-cpp-objects): $(build)/%.o: $(src)/%.cpp $(vm-depends)
 	$(compile-object)
 
 $(build)/%.o: $(lzma)/C/%.c
-	@echo "compiling $(@)"
+	@echo "compiling $(<) to $(@)"
 	@mkdir -p $(dir $(@))
 	$(cxx) $(cflags) $(no-error) -c $$($(windows-path) $(<)) $(call output,$(@))
 
-$(vm-asm-objects): $(build)/%-asm.o: $(src)/%.S
+$(vm-asm-objects): $(build)/%-asm.o: $(src)/%$(asm-suffix)
 	$(compile-asm-object)
 
 $(bootimage-generator-objects): $(build)/%.o: $(src)/%.cpp $(vm-depends)
@@ -969,7 +972,7 @@ $(driver-object): $(driver-source)
 	$(compile-object)
 
 $(build)/main-dynamic.o: $(driver-source)
-	@echo "compiling $(@)"
+	@echo "compiling $(<) to $(@)"
 	@mkdir -p $(dir $(@))
 	$(cxx) $(cflags) -DBOOT_LIBRARY=\"$(so-prefix)jvm$(so-suffix)\" \
 		-c $(<) $(call output,$(@))
@@ -1020,7 +1023,7 @@ $(javahome-object): $(build)/javahome.jar $(converter)
 		_binary_javahome_jar_end $(platform) $(arch)
 
 define compile-generator-object
-	@echo "compiling $(@)"
+	@echo "compiling $(<) to $(@)"
 	@mkdir -p $(dir $(@))
 	$(build-cxx) -DPOINTER_SIZE=$(pointer-size) -O0 -g3 $(build-cflags) \
 		-c $(<) -o $(@)
@@ -1031,7 +1034,7 @@ $(generator-objects): $(build)/%-build.o: $(src)/%.cpp
 	$(compile-generator-object)
 
 $(build)/%-build.o: $(lzma)/C/%.c
-	@echo "compiling $(@)"
+	@echo "compiling $(<) to $(@)"
 	@mkdir -p $(dir $(@))
 	$(build-cxx) -DPOINTER_SIZE=$(pointer-size) -O0 -g3 $(build-cflags) \
 		$(no-error) -c $(<) -o $(@)
@@ -1061,7 +1064,7 @@ ifeq ($(platform),windows)
 ifdef msvc
 	$(ld) $(lflags) $(executable-objects) -out:$(@) -PDB:$(@).pdb \
 		-IMPLIB:$(@).lib -MANIFESTFILE:$(@).manifest
-	$(mt) -manifest $(@).manifest -outputresource:"$(@);1"
+	# $(mt) -manifest $(@).manifest -outputresource:"$(@);1"
 else
 	$(dlltool) -z $(@).def $(executable-objects)
 	$(dlltool) -d $(@).def -e $(@).exp
@@ -1096,7 +1099,7 @@ ifeq ($(platform),windows)
 ifdef msvc
 	$(ld) $(lflags) $(^) -out:$(@) -PDB:$(@).pdb -IMPLIB:$(@).lib \
 		-MANIFESTFILE:$(@).manifest
-	$(mt) -manifest $(@).manifest -outputresource:"$(@);1"
+	#$(mt) -manifest $(@).manifest -outputresource:"$(@);1"
 else
 	$(dlltool) -z $(@).def $(^)
 	$(dlltool) -d $(@).def -e $(@).exp
@@ -1114,7 +1117,7 @@ $(dynamic-library): $(vm-objects) $(dynamic-object) $(classpath-objects) \
 ifdef msvc
 	$(ld) $(shared) $(lflags) $(^) -out:$(@) -PDB:$(@).pdb \
 		-IMPLIB:$(build)/$(name).lib -MANIFESTFILE:$(@).manifest
-	$(mt) -manifest $(@).manifest -outputresource:"$(@);2"
+	#$(mt) -manifest $(@).manifest -outputresource:"$(@);2"
 else
 	$(ld) $(^) $(version-script-flag)	$(shared) $(lflags) $(bootimage-lflags) \
 		-o $(@)
@@ -1129,7 +1132,7 @@ ifdef msvc
 	$(ld) $(lflags) -LIBPATH:$(build) -DEFAULTLIB:$(name) \
 		-PDB:$(@).pdb -IMPLIB:$(@).lib $(driver-dynamic-objects) -out:$(@) \
 		-MANIFESTFILE:$(@).manifest
-	$(mt) -manifest $(@).manifest -outputresource:"$(@);1"
+	# $(mt) -manifest $(@).manifest -outputresource:"$(@);1"
 else
 	$(ld) $(driver-dynamic-objects) -L$(build) -ljvm $(lflags) $(no-lto) -o $(@)
 endif
