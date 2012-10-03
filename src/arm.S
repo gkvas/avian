@@ -57,15 +57,20 @@ LOCAL(loop):
   // setup argument registers if necessary
   tst     r6, r6
   ldmneia r6, {r0-r3}
-#if defined(__VFP_FP__) && (! defined(__SOFTFP__)) && (! defined(__QNX__))
+#if defined(__ARM_PCS_VFP)
   // and VFP registers
   vldmia  r7, {d0-d7}
 #endif
 
+#if defined(__ARM_ARCH_4__) || defined(__ARM_ARCH_4T__)
+  mov   lr, pc
+  bx    r4
+#else
   blx   r4         // call function
+#endif
   add   sp, sp, r5 // deallocate stack
 
-#if defined(__VFP_FP__) && (! defined(__SOFTFP__)) && (! defined(__QNX__))
+#if defined(__ARM_PCS_VFP)
   cmp   r8,#FLOAT_TYPE
   bne   LOCAL(double)
   fmrs  r0,s0
@@ -108,7 +113,12 @@ GLOBAL(vmRun1):
   mov   r12, r0
   ldr   r0, [r2, #CHECKPOINT_THREAD]
 
+#if defined(__ARM_ARCH_4__) || defined(__ARM_ARCH_4T__)
+  mov   lr, pc
+  bx    r12
+#else
   blx   r12
+#endif
 
 .globl GLOBAL(vmRun_returnAddress)
 .align 2
