@@ -882,7 +882,7 @@ class TraceElement: public TraceHandler {
     flags(flags),
     watch(false)
   {
-    memset(map, 0, mapSize * BytesPerWord);
+    memset(map, 0xFF, mapSize * BytesPerWord);
   }
 
   virtual void handleTrace(Promise* address, unsigned argumentIndex) {
@@ -6598,11 +6598,11 @@ translateLineNumberTable(MyThread* t, Context* context, intptr_t start)
 }
 
 void
-printSet(uintptr_t m, unsigned limit)
+printSet(uintptr_t* m, unsigned limit)
 {
   if (limit) {
-    for (unsigned i = 0; i < 16; ++i) {
-      if ((m >> i) & 1) {
+    for (unsigned i = 0; i < 32; ++i) {
+      if ((*m >> i) & 1) {
         fprintf(stderr, "1");
       } else {
         fprintf(stderr, "_");
@@ -6646,7 +6646,7 @@ calculateTryCatchRoots(Context* context, SubroutinePath* subroutinePath,
       if (traceRoots) {
         if (DebugFrameMaps) {
           fprintf(stderr, "   use roots at ip %3d: ", te->ip);
-          printSet(*traceRoots, mapSize);
+          printSet(traceRoots, mapSize);
           fprintf(stderr, "\n");
         }
 
@@ -6663,7 +6663,7 @@ calculateTryCatchRoots(Context* context, SubroutinePath* subroutinePath,
 
   if (DebugFrameMaps) {
     fprintf(stderr, "result roots          : ");
-    printSet(*roots, mapSize);
+    printSet(roots, mapSize);
     fprintf(stderr, "\n");
   }
 }
@@ -6717,7 +6717,7 @@ calculateFrameMaps(MyThread* t, Context* context, uintptr_t* originalRoots,
 
       if (DebugFrameMaps) {
         fprintf(stderr, "       roots at ip %3d: ", ip);
-        printSet(*RUNTIME_ARRAY_BODY(roots), mapSize);
+        printSet(RUNTIME_ARRAY_BODY(roots), mapSize);
         fprintf(stderr, "\n");
       }
 
@@ -6746,7 +6746,7 @@ calculateFrameMaps(MyThread* t, Context* context, uintptr_t* originalRoots,
 
         if (DebugFrameMaps) {
           fprintf(stderr, " table roots at ip %3d: ", ip);
-          printSet(*tableRoots, mapSize);
+          printSet(tableRoots, mapSize);
           fprintf(stderr, "\n");
         }
       } else {
@@ -6800,7 +6800,7 @@ calculateFrameMaps(MyThread* t, Context* context, uintptr_t* originalRoots,
       TraceElement* te; context->eventLog.get(eventIndex, &te, BytesPerWord);
       if (DebugFrameMaps) {
         fprintf(stderr, " trace roots at ip %3d: ", ip);
-        printSet(*RUNTIME_ARRAY_BODY(roots), mapSize);
+        printSet(RUNTIME_ARRAY_BODY(roots), mapSize);
         if (subroutinePath) {
           fprintf(stderr, " ");
           print(subroutinePath);
@@ -6899,7 +6899,7 @@ calculateFrameMaps(MyThread* t, Context* context, uintptr_t* originalRoots,
   if (resultRoots and ip != -1) {
     if (DebugFrameMaps) {
       fprintf(stderr, "result roots at ip %3d: ", ip);
-      printSet(*RUNTIME_ARRAY_BODY(roots), mapSize);
+      printSet(RUNTIME_ARRAY_BODY(roots), mapSize);
       if (subroutinePath) {
         fprintf(stderr, " ");
         print(subroutinePath);
@@ -6968,7 +6968,7 @@ copyFrameMap(int32_t* dst, uintptr_t* src, unsigned mapSizeInBits,
 {
   if (DebugFrameMaps) {
     fprintf(stderr, "  orig roots at ip %3d: ", p->ip);
-    printSet(src[0], ceiling(mapSizeInBits, BitsPerWord));
+    printSet(src, ceiling(mapSizeInBits, BitsPerWord));
     print(subroutinePath);
     fprintf(stderr, "\n");
 

@@ -341,6 +341,15 @@ makeClassNameString(Thread* t, object name)
   return makeString(t, "%s", s);
 }
 
+object
+makeJmethod(Thread* t, object vmMethod, int index = -1);
+
+object
+makeJconstructor(Thread* t, object vmMethod, int index = -1);
+
+object
+makeJfield(Thread* t, object vmField, int index = -1);
+
 void
 interceptFileOperations(Thread*);
 
@@ -430,17 +439,20 @@ class MyClasspath : public Classpath {
     unsigned libraryPathOffset = sb.offset;
     sb.append(javaHome);
 #ifdef PLATFORM_WINDOWS
-    sb.append("/bin");
+#  define LIB_DIR "/bin"
 #elif defined __APPLE__
-    sb.append("/lib");
+#  define LIB_DIR "/lib"
 #elif defined ARCH_x86_64
-    sb.append("/lib/amd64");
+#  define LIB_DIR "/lib/amd64"
 #elif defined ARCH_arm
-    sb.append("/lib/arm");
+#  define LIB_DIR "/lib/arm"
 #else
     // todo: handle other architectures
-    sb.append("/lib/i386");
+#  define LIB_DIR "/lib/i386"
 #endif
+    sb.append(LIB_DIR ":");
+    sb.append(javaHome);
+    sb.append(LIB_DIR "/xawt");
     sb.append('\0');
 
     unsigned tzMappingsOffset = sb.offset;
@@ -537,6 +549,44 @@ class MyClasspath : public Classpath {
     return thread;
   }
 
+  virtual object
+  makeJMethod(Thread* t, object vmMethod)
+  {
+    PROTECT(t, vmMethod);
+
+    return byteArrayBody(t, methodName(t, vmMethod), 0) == '<'
+      ? makeJconstructor(t, vmMethod)
+      : makeJmethod(t, vmMethod);
+  }
+
+  virtual object
+  getVMMethod(Thread* t, object jmethod)
+  {
+    return objectClass(t, jmethod) == type(t, Machine::JmethodType)
+      ? arrayBody
+      (t, classMethodTable
+       (t, jclassVmClass(t, jmethodClazz(t, jmethod))),
+       jmethodSlot(t, jmethod))
+      : arrayBody
+      (t, classMethodTable
+       (t, jclassVmClass(t, jconstructorClazz(t, jmethod))),
+       jconstructorSlot(t, jmethod));
+  }
+
+  virtual object
+  makeJField(Thread* t, object vmField)
+  {
+    return makeJfield(t, vmField);
+  }
+
+  virtual object
+  getVMField(Thread* t, object jfield)
+  {
+    return arrayBody
+      (t, classFieldTable
+       (t, jclassVmClass(t, jfieldClazz(t, jfield))), jfieldSlot(t, jfield));
+  }
+
   virtual void
   clearInterrupted(Thread* t)
   {
@@ -588,6 +638,7 @@ class MyClasspath : public Classpath {
 #else // not AVIAN_OPENJDK_SRC
     expect(t, loadLibrary(t, libraryPath, "verify", true, true));
     expect(t, loadLibrary(t, libraryPath, "java", true, true));
+    loadLibrary(t, libraryPath, "mawt", true, true);
 #endif // not AVIAN_OPENJDK_SRC
 
     { object assertionLock = resolveField
@@ -2258,6 +2309,213 @@ resolveExceptionJTypes(Thread* t, object loader, object addendum)
   }
 
   return array;
+}
+
+object
+makeJmethod(Thread* t, object vmMethod, int index)
+{
+  PROTECT(t, vmMethod);
+
+  object name = intern
+    (t, t->m->classpath->makeString
+     (t, methodName(t, vmMethod), 0, byteArrayLength
+      (t, methodName(t, vmMethod)) - 1));
+  PROTECT(t, name);
+
+  unsigned parameterCount;
+  unsigned returnTypeSpec;
+  object parameterTypes = local::resolveParameterJTypes
+    (t, classLoader(t, methodClass(t, vmMethod)), methodSpec(t, vmMethod),
+     &parameterCount, &returnTypeSpec);
+  PROTECT(t, parameterTypes);
+
+  object returnType = local::resolveJType
+    (t, classLoader(t, methodClass(t, vmMethod)), reinterpret_cast<char*>
+     (&byteArrayBody(t, methodSpec(t, vmMethod), returnTypeSpec)),
+     byteArrayLength(t, methodSpec(t, vmMethod)) - 1 - returnTypeSpec);
+  PROTECT(t, returnType);
+
+  object exceptionTypes = local::resolveExceptionJTypes
+    (t, classLoader(t, methodClass(t, vmMethod)),
+     methodAddendum(t, vmMethod));
+  PROTECT(t, exceptionTypes);
+
+  object signature;
+  object annotationTable;
+  object annotationDefault;
+  object addendum = methodAddendum(t, vmMethod);
+  if (addendum) {
+    signature = addendumSignature(t, addendum);
+    if (signature) {
+      signature = t->m->classpath->makeString
+        (t, signature, 0, byteArrayLength(t, signature) - 1);
+    }
+
+    annotationTable = addendumAnnotationTable(t, addendum);
+
+    annotationDefault = methodAddendumAnnotationDefault(t, addendum);
+  } else {
+    signature = 0;
+    annotationTable = 0;
+    annotationDefault = 0;
+  }
+
+  PROTECT(t, signature);
+  PROTECT(t, annotationTable);
+  PROTECT(t, annotationDefault);
+
+  if (annotationTable or annotationDefault) {
+    object runtimeData = getClassRuntimeData(t, methodClass(t, vmMethod));
+
+    set(t, runtimeData, ClassRuntimeDataPool,
+        addendumPool(t, methodAddendum(t, vmMethod)));
+  }
+
+  if (index == -1) {
+    object table = classMethodTable(t, methodClass(t, vmMethod));
+    for (unsigned i = 0; i < arrayLength(t, table); ++i) {
+      if (vmMethod == arrayBody(t, table, i)) {
+        index = i;
+        break;
+      }
+    }
+  }
+
+  expect(t, index != -1);
+
+  object jclass = getJClass(t, methodClass(t, vmMethod));
+
+  return makeJmethod
+    (t, true, 0, jclass, index, name, returnType, parameterTypes,
+     exceptionTypes, methodFlags(t, vmMethod), signature, 0, annotationTable,
+     0, annotationDefault, 0, 0, 0);
+}
+
+object
+makeJconstructor(Thread* t, object vmMethod, int index)
+{
+  PROTECT(t, vmMethod);
+
+  unsigned parameterCount;
+  unsigned returnTypeSpec;
+  object parameterTypes = local::resolveParameterJTypes
+    (t, classLoader(t, methodClass(t, vmMethod)), methodSpec(t, vmMethod),
+     &parameterCount, &returnTypeSpec);
+  PROTECT(t, parameterTypes);
+
+  object exceptionTypes = local::resolveExceptionJTypes
+    (t, classLoader(t, methodClass(t, vmMethod)),
+     methodAddendum(t, vmMethod));
+  PROTECT(t, exceptionTypes);
+
+  object signature;
+  object annotationTable;
+  object addendum = methodAddendum(t, vmMethod);
+  if (addendum) {
+    signature = addendumSignature(t, addendum);
+    if (signature) {
+      signature = t->m->classpath->makeString
+        (t, signature, 0, byteArrayLength(t, signature) - 1);
+    }
+
+    annotationTable = addendumAnnotationTable(t, addendum);
+  } else {
+    signature = 0;
+    annotationTable = 0;
+  }
+
+  PROTECT(t, signature);
+  PROTECT(t, annotationTable);
+
+  if (annotationTable) {
+    object runtimeData = getClassRuntimeData(t, methodClass(t, vmMethod));
+
+    set(t, runtimeData, ClassRuntimeDataPool,
+        addendumPool(t, methodAddendum(t, vmMethod)));
+  }
+
+  if (index == -1) {
+    object table = classMethodTable(t, methodClass(t, vmMethod));
+    for (unsigned i = 0; i < arrayLength(t, table); ++i) {
+      if (vmMethod == arrayBody(t, table, i)) {
+        index = i;
+        break;
+      }
+    }
+  }
+
+  expect(t, index != -1);
+
+  object jclass = getJClass(t, methodClass(t, vmMethod));
+
+  return makeJconstructor
+    (t, true, 0, jclass, index, parameterTypes, exceptionTypes, methodFlags
+     (t, vmMethod), signature, 0, annotationTable, 0, 0, 0, 0);
+}
+
+object
+makeJfield(Thread* t, object vmField, int index)
+{
+  PROTECT(t, vmField);
+
+  object name = intern
+    (t, t->m->classpath->makeString
+     (t, fieldName(t, vmField), 0, byteArrayLength
+      (t, fieldName(t, vmField)) - 1));
+  PROTECT(t, name);
+
+  object type = local::resolveClassBySpec
+    (t, classLoader(t, fieldClass(t, vmField)),
+     reinterpret_cast<char*>
+     (&byteArrayBody(t, fieldSpec(t, vmField), 0)),
+     byteArrayLength(t, fieldSpec(t, vmField)) - 1);
+  PROTECT(t, type);
+
+  type = getJClass(t, type);
+
+  object signature;
+  object annotationTable;
+  object addendum = fieldAddendum(t, vmField);
+  if (addendum) {
+    signature = addendumSignature(t, addendum);
+    if (signature) {
+      signature = t->m->classpath->makeString
+        (t, signature, 0, byteArrayLength(t, signature) - 1);
+    }
+
+    annotationTable = addendumAnnotationTable(t, addendum);
+  } else {
+    signature = 0;
+    annotationTable = 0;
+  }
+
+  PROTECT(t, signature);
+  PROTECT(t, annotationTable);
+
+  if (annotationTable) {
+    object runtimeData = getClassRuntimeData(t, fieldClass(t, vmField));
+
+    set(t, runtimeData, ClassRuntimeDataPool,
+        addendumPool(t, fieldAddendum(t, vmField)));
+  }
+
+  if (index == -1) {
+    object table = classFieldTable(t, fieldClass(t, vmField));
+    for (unsigned i = 0; i < arrayLength(t, table); ++i) {
+      if (vmField == arrayBody(t, table, i)) {
+        index = i;
+        break;
+      }
+    }
+  }
+
+  expect(t, index != -1);
+
+  object jclass = getJClass(t, fieldClass(t, vmField));
+
+  return makeJfield
+    (t, true, 0, jclass, index, name, type, fieldFlags
+     (t, vmField), signature, 0, annotationTable, 0, 0, 0, 0);
 }
 
 void
@@ -4380,65 +4638,7 @@ jvmGetClassDeclaredMethods(Thread* t, uintptr_t* arguments)
       if (((not publicOnly) or (methodFlags(t, vmMethod) & ACC_PUBLIC))
           and byteArrayBody(t, methodName(t, vmMethod), 0) != '<')
       {
-        object name = intern
-          (t, t->m->classpath->makeString
-           (t, methodName(t, vmMethod), 0, byteArrayLength
-            (t, methodName(t, vmMethod)) - 1));
-        PROTECT(t, name);
-
-        unsigned parameterCount;
-        unsigned returnTypeSpec;
-        object parameterTypes = local::resolveParameterJTypes
-          (t, classLoader(t, jclassVmClass(t, *c)), methodSpec(t, vmMethod),
-           &parameterCount, &returnTypeSpec);
-        PROTECT(t, parameterTypes);
-
-        object returnType = local::resolveJType
-          (t, classLoader(t, jclassVmClass(t, *c)), reinterpret_cast<char*>
-           (&byteArrayBody(t, methodSpec(t, vmMethod), returnTypeSpec)),
-           byteArrayLength(t, methodSpec(t, vmMethod)) - 1 - returnTypeSpec);
-        PROTECT(t, returnType);
-
-        object exceptionTypes = local::resolveExceptionJTypes
-          (t, classLoader(t, jclassVmClass(t, *c)),
-           methodAddendum(t, vmMethod));
-        PROTECT(t, exceptionTypes);
-
-        object signature;
-        object annotationTable;
-        object annotationDefault;
-        object addendum = methodAddendum(t, vmMethod);
-        if (addendum) {
-          signature = addendumSignature(t, addendum);
-          if (signature) {
-            signature = t->m->classpath->makeString
-              (t, signature, 0, byteArrayLength(t, signature) - 1);
-          }
-
-          annotationTable = addendumAnnotationTable(t, addendum);
-
-          annotationDefault = methodAddendumAnnotationDefault(t, addendum);
-        } else {
-          signature = 0;
-          annotationTable = 0;
-          annotationDefault = 0;
-        }
-
-        if (annotationTable or annotationDefault) {
-          PROTECT(t, signature);
-          PROTECT(t, annotationTable);
-          PROTECT(t, annotationDefault);
-
-          object runtimeData = getClassRuntimeData(t, jclassVmClass(t, *c));
-
-          set(t, runtimeData, ClassRuntimeDataPool,
-              addendumPool(t, methodAddendum(t, vmMethod)));
-        }
-
-        object method = makeJmethod
-          (t, true, 0, *c, i, name, returnType, parameterTypes, exceptionTypes,
-           methodFlags(t, vmMethod), signature, 0, annotationTable, 0,
-           annotationDefault, 0, 0, 0);
+        object method = makeJmethod(t, vmMethod, i);
 
         assert(t, ai < objectArrayLength(t, array));
 
@@ -4483,50 +4683,7 @@ jvmGetClassDeclaredFields(Thread* t, uintptr_t* arguments)
       PROTECT(t, vmField);
 
       if ((not publicOnly) or (fieldFlags(t, vmField) & ACC_PUBLIC)) {
-        object name = intern
-          (t, t->m->classpath->makeString
-           (t, fieldName(t, vmField), 0, byteArrayLength
-            (t, fieldName(t, vmField)) - 1));
-        PROTECT(t, name);
-
-        object type = local::resolveClassBySpec
-          (t, classLoader(t, jclassVmClass(t, *c)),
-           reinterpret_cast<char*>
-           (&byteArrayBody(t, fieldSpec(t, vmField), 0)),
-           byteArrayLength(t, fieldSpec(t, vmField)) - 1);
-        PROTECT(t, type);
-
-        type = getJClass(t, type);
-
-        object signature;
-        object annotationTable;
-        object addendum = fieldAddendum(t, vmField);
-        if (addendum) {
-          signature = addendumSignature(t, addendum);
-          if (signature) {
-            signature = t->m->classpath->makeString
-              (t, signature, 0, byteArrayLength(t, signature) - 1);
-          }
-
-          annotationTable = addendumAnnotationTable(t, addendum);
-        } else {
-          signature = 0;
-          annotationTable = 0;
-        }
-
-        if (annotationTable) {
-          PROTECT(t, signature);
-          PROTECT(t, annotationTable);
-
-          object runtimeData = getClassRuntimeData(t, jclassVmClass(t, *c));
-
-          set(t, runtimeData, ClassRuntimeDataPool,
-              addendumPool(t, fieldAddendum(t, vmField)));
-        }
-
-        object field = makeJfield
-          (t, true, 0, *c, i, name, type, fieldFlags
-           (t, vmField), signature, 0, annotationTable, 0, 0, 0, 0);
+        object field = makeJfield(t, vmField, i);
 
         assert(t, ai < objectArrayLength(t, array));
 
@@ -4577,47 +4734,7 @@ jvmGetClassDeclaredConstructors(Thread* t, uintptr_t* arguments)
                      (&byteArrayBody(t, methodName(t, vmMethod), 0)),
                      "<init>") == 0)
       {
-        unsigned parameterCount;
-        unsigned returnTypeSpec;
-        object parameterTypes = local::resolveParameterJTypes
-          (t, classLoader(t, jclassVmClass(t, *c)), methodSpec(t, vmMethod),
-           &parameterCount, &returnTypeSpec);
-        PROTECT(t, parameterTypes);
-
-        object exceptionTypes = local::resolveExceptionJTypes
-          (t, classLoader(t, jclassVmClass(t, *c)),
-           methodAddendum(t, vmMethod));
-        PROTECT(t, exceptionTypes);
-
-        object signature;
-        object annotationTable;
-        object addendum = methodAddendum(t, vmMethod);
-        if (addendum) {
-          signature = addendumSignature(t, addendum);
-          if (signature) {
-            signature = t->m->classpath->makeString
-              (t, signature, 0, byteArrayLength(t, signature) - 1);
-          }
-
-          annotationTable = addendumAnnotationTable(t, addendum);
-        } else {
-          signature = 0;
-          annotationTable = 0;
-        }
-
-        if (annotationTable) {
-          PROTECT(t, signature);
-          PROTECT(t, annotationTable);
-
-          object runtimeData = getClassRuntimeData(t, jclassVmClass(t, *c));
-
-          set(t, runtimeData, ClassRuntimeDataPool,
-              addendumPool(t, methodAddendum(t, vmMethod)));
-        }
-
-        object method = makeJconstructor
-          (t, true, 0, *c, i, parameterTypes, exceptionTypes, methodFlags
-           (t, vmMethod), signature, 0, annotationTable, 0, 0, 0, 0);
+        object method = makeJconstructor(t, vmMethod, i);
 
         assert(t, ai < objectArrayLength(t, array));
 

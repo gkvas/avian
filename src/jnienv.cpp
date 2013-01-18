@@ -396,6 +396,14 @@ Throw(Thread* t, jthrowable throwable)
   return 0;
 }
 
+jobject JNICALL
+NewLocalRef(Thread* t, jobject o)
+{  
+  ENTER(t, Thread::ActiveState);
+
+  return makeLocalReference(t, *o);
+}
+
 void JNICALL
 DeleteLocalRef(Thread* t, jobject r)
 {
@@ -3155,6 +3163,82 @@ ReleasePrimitiveArrayCritical(Thread* t, jarray, void*, jint)
 }
 
 uint64_t
+fromReflectedMethod(Thread* t, uintptr_t* arguments)
+{
+  jobject m = reinterpret_cast<jobject>(arguments[0]);
+
+  return methodID(t, t->m->classpath->getVMMethod(t, *m));
+}
+
+jmethodID JNICALL
+FromReflectedMethod(Thread* t, jobject method)
+{
+  uintptr_t arguments[] = { reinterpret_cast<uintptr_t>(method) };
+
+  return static_cast<jmethodID>(run(t, fromReflectedMethod, arguments));
+}
+
+uint64_t
+toReflectedMethod(Thread* t, uintptr_t* arguments)
+{
+  jmethodID m = arguments[1];
+  jboolean isStatic = arguments[2];
+
+  return reinterpret_cast<uintptr_t>
+    (makeLocalReference
+     (t, t->m->classpath->makeJMethod
+      (t, isStatic ? getStaticMethod(t, m) : getMethod(t, m))));
+}
+
+jobject JNICALL
+ToReflectedMethod(Thread* t, jclass c, jmethodID method, jboolean isStatic)
+{
+  uintptr_t arguments[] = { reinterpret_cast<uintptr_t>(c),
+                            static_cast<uintptr_t>(method),
+                            static_cast<uintptr_t>(isStatic) };
+
+  return reinterpret_cast<jobject>(run(t, toReflectedMethod, arguments));
+}
+
+uint64_t
+fromReflectedField(Thread* t, uintptr_t* arguments)
+{
+  jobject f = reinterpret_cast<jobject>(arguments[0]);
+
+  return fieldID(t, t->m->classpath->getVMField(t, *f));
+}
+
+jfieldID JNICALL
+FromReflectedField(Thread* t, jobject field)
+{
+  uintptr_t arguments[] = { reinterpret_cast<uintptr_t>(field) };
+
+  return static_cast<jfieldID>(run(t, fromReflectedField, arguments));
+}
+
+uint64_t
+toReflectedField(Thread* t, uintptr_t* arguments)
+{
+  jfieldID f = arguments[1];
+  jboolean isStatic = arguments[2];
+
+  return reinterpret_cast<uintptr_t>
+    (makeLocalReference
+     (t, t->m->classpath->makeJField
+      (t, isStatic ? getStaticField(t, f) : getField(t, f))));
+}
+
+jobject JNICALL
+ToReflectedField(Thread* t, jclass c, jfieldID field, jboolean isStatic)
+{
+  uintptr_t arguments[] = { reinterpret_cast<uintptr_t>(c),
+                            static_cast<uintptr_t>(field),
+                            static_cast<uintptr_t>(isStatic) };
+
+  return reinterpret_cast<jobject>(run(t, toReflectedField, arguments));
+}
+
+uint64_t
 registerNatives(Thread* t, uintptr_t* arguments)
 {
   jclass c = reinterpret_cast<jclass>(arguments[0]);
@@ -3286,12 +3370,21 @@ PushLocalFrame(Thread* t, jint capacity)
 uint64_t
 popLocalFrame(Thread* t, uintptr_t* arguments)
 {
-  object result = *reinterpret_cast<jobject>(arguments[0]);
-  PROTECT(t, result);
+  uint64_t r;
+  jobject presult = reinterpret_cast<jobject>(arguments[0]);
+  if(presult != NULL) {
+    object result = *presult;
+    PROTECT(t, result);
 
-  t->m->processor->popLocalFrame(t);
-  
-  return reinterpret_cast<uint64_t>(makeLocalReference(t, result));
+    t->m->processor->popLocalFrame(t);
+
+    r = reinterpret_cast<uint64_t>(makeLocalReference(t, result));
+  } else {
+    t->m->processor->popLocalFrame(t);
+    r = 0;
+  }
+
+  return r;
 }
 
 jobject JNICALL
@@ -3345,11 +3438,11 @@ parseSize(const char* s)
   RUNTIME_ARRAY(char, buffer, length + 1);
   if (length == 0) {
     return 0;
-  } else if (s[length - 1] == 'k') {
+  } else if (s[length - 1] == 'k' or s[length - 1] == 'K') {
     memcpy(RUNTIME_ARRAY_BODY(buffer), s, length - 1);
     RUNTIME_ARRAY_BODY(buffer)[length - 1] = 0;
     return atoi(RUNTIME_ARRAY_BODY(buffer)) * 1024;
-  } else if (s[length - 1] == 'm') {
+  } else if (s[length - 1] == 'm' or s[length - 1] == 'M') {
     memcpy(RUNTIME_ARRAY_BODY(buffer), s, length - 1);
     RUNTIME_ARRAY_BODY(buffer)[length - 1] = 0;
     return atoi(RUNTIME_ARRAY_BODY(buffer)) * 1024 * 1024;
@@ -3437,6 +3530,7 @@ populateJNITables(JavaVMVTable* vmTable, JNIEnvVTable* envTable)
   envTable->NewDirectByteBuffer = local::NewDirectByteBuffer;
   envTable->GetDirectBufferAddress = local::GetDirectBufferAddress;
   envTable->GetDirectBufferCapacity = local::GetDirectBufferCapacity;
+  envTable->NewLocalRef = local::NewLocalRef;
   envTable->DeleteLocalRef = local::DeleteLocalRef;
   envTable->GetObjectClass = local::GetObjectClass;
   envTable->GetSuperclass = local::GetSuperclass;
@@ -3607,6 +3701,10 @@ populateJNITables(JavaVMVTable* vmTable, JNIEnvVTable* envTable)
   envTable->IsSameObject = local::IsSameObject;
   envTable->PushLocalFrame = local::PushLocalFrame;
   envTable->PopLocalFrame = local::PopLocalFrame;
+  envTable->FromReflectedMethod = local::FromReflectedMethod;
+  envTable->ToReflectedMethod = local::ToReflectedMethod;
+  envTable->FromReflectedField = local::FromReflectedField;
+  envTable->ToReflectedField = local::ToReflectedField;
 }
 
 } // namespace vm
