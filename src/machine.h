@@ -1790,8 +1790,8 @@ class FixedAllocator: public Allocator {
     s(s), base(base), offset(0), capacity(capacity)
   { }
 
-  virtual void* tryAllocate(unsigned) {
-    abort(s);
+  virtual void* tryAllocate(unsigned size) {
+    return allocate(size);
   }
 
   void* allocate(unsigned size, unsigned padAlignment) {
@@ -2530,6 +2530,9 @@ emptyMethod(Thread* t, object method)
 
 object
 parseUtf8(Thread* t, const char* data, unsigned length);
+
+object
+parseUtf8(Thread* t, object array);
 
 object
 parseClass(Thread* t, object loader, const uint8_t* data, unsigned length,
