@@ -77,7 +77,7 @@ class DirectoryElement: public Element {
           if (v[0] != '.') {
             last = append(allocator, name, "/", v);
             unsigned length;
-            if (s->stat1(last, &length) == System::TypeDirectory) {
+            if (s->stat(last, &length) == System::TypeDirectory) {
               it = new (allocator->allocate(sizeof(Iterator)))
                 Iterator(s, allocator, last, skip);
               it->name = last;
@@ -141,7 +141,7 @@ class DirectoryElement: public Element {
 
   virtual System::FileType stat(const char* name, unsigned* length, bool)  {
     const char* file = append(allocator, this->name, "/", name);
-    System::FileType type = s->stat1(file, length);
+    System::FileType type = s->stat(file, length);
     if (DebugStat) {
       fprintf(stderr, "stat %s in %s: %d\n", name, this->name, type);
     }
@@ -781,7 +781,7 @@ add(System* s, Element** first, Element** last, Allocator* allocator,
     name[tokenLength] = 0;
 
     unsigned length;
-    switch (s->stat1(name, &length)) {
+    switch (s->stat(name, &length)) {
     case System::TypeFile: {
       addJar(s, first, last, allocator, name, bootLibrary);
     } break;

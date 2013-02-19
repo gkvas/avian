@@ -9456,7 +9456,7 @@ logCompile(MyThread* t, const void* code, unsigned size, const char* class_,
     open = true;
     const char* path = findProperty(t, "avian.jit.log");
     if (path) {
-      compileLog = vm::fopen1(path, "wb");
+      compileLog = vm::fopen(path, "wb");
     } else if (DebugCompile) {
       compileLog = stderr;
     }

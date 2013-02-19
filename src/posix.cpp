@@ -812,7 +812,7 @@ class MySystem: public System {
     return status;
   }
 
-  virtual FileType stat1(const char* name, unsigned* length) {
+  virtual FileType stat(const char* name, unsigned* length) {
 #ifdef __FreeBSD__
     // Now the hack below causes the error "Dereferencing type-punned
     // pointer will break strict aliasing rules", so another workaround

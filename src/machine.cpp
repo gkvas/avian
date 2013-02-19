@@ -4676,7 +4676,7 @@ collect(Thread* t, Heap::CollectionType type)
     t->m->dumpedHeapOnOOM = true;
     const char* path = findProperty(t, "avian.heap.dump");
     if (path) {
-      FILE* out = vm::fopen1(path, "wb");
+      FILE* out = vm::fopen(path, "wb");
       if (out) {
         dumpHeap(t, out);
         fclose(out);

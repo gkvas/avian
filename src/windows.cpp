@@ -891,7 +891,7 @@ class MySystem: public System {
     return status;
   }
 
-  virtual FileType stat1(const char* name, unsigned* length) {
+  virtual FileType stat(const char* name, unsigned* length) {
     size_t nameLen = strlen(name) * 2;
     RUNTIME_ARRAY(wchar_t, wideName, nameLen + 1);
     MultiByteToWideChar(CP_UTF8, 0, name, -1, RUNTIME_ARRAY_BODY(wideName), nameLen + 1);

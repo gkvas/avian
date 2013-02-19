@@ -257,7 +257,7 @@ snprintf(char* dst, size_t size, const char* format, ...)
 
 
 inline FILE*
-fopen1(const char* name, const char* mode)
+fopen(const char* name, const char* mode)
 {
 #ifndef WINCE
   FILE* file;
@@ -290,7 +290,7 @@ snprintf(char* dst, size_t size, const char* format, ...)
 }
 
 inline FILE*
-fopen1(const char* name, const char* mode)
+fopen(const char* name, const char* mode)
 {
   return ::fopen(name, mode);
 }
