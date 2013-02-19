@@ -18,7 +18,7 @@
 
 using namespace vm;
 
-namespace {
+namespace local {
 
 namespace isa {
 // SYSTEM REGISTERS
@@ -235,7 +235,7 @@ class PoolOffset;
 class PoolEvent;
 
 void
-_resolve(MyBlock*);
+resolve(MyBlock*);
 
 unsigned
 padding(MyBlock*, unsigned);
@@ -252,7 +252,7 @@ class MyBlock: public Assembler::Block {
     this->start = start;
     this->next = static_cast<MyBlock*>(next);
 
-	_resolve(this);
+    local::resolve(this);
 
     return start + size + padding(this, size);
   }
@@ -393,7 +393,7 @@ class Offset: public Promise {
 };
 
 Promise*
-_offset(Context* con, bool forTrace = false)
+offset(Context* con, bool forTrace = false)
 {
   return new(con->zone) Offset(con, con->lastBlock, con->code.length(), forTrace);
 }
@@ -811,7 +811,7 @@ padding(MyBlock* b, unsigned offset)
 }
 
 void
-_resolve(MyBlock* b)
+resolve(MyBlock* b)
 {
   Context* con = b->context;
 
@@ -1652,7 +1652,7 @@ branch(Context* con, TernaryOperation op)
 void
 conditional(Context* con, int32_t branch, Assembler::Constant* target)
 {
-  appendOffsetTask(con, target->value, _offset(con));
+  appendOffsetTask(con, target->value, offset(con));
   emit(con, branch);
 }
 
@@ -1871,7 +1871,7 @@ callC(Context* con, unsigned size UNUSED, Assembler::Constant* target)
 {
   assert(con, size == TargetBytesPerWord);
 
-  appendOffsetTask(con, target->value, _offset(con));
+  appendOffsetTask(con, target->value, offset(con));
   emit(con, bl(0));
 }
 
@@ -1881,7 +1881,7 @@ longCallC(Context* con, unsigned size UNUSED, Assembler::Constant* target)
   assert(con, size == TargetBytesPerWord);
 
   Assembler::Register tmp(4);
-  moveCR2(con, TargetBytesPerWord, target, &tmp, _offset(con));
+  moveCR2(con, TargetBytesPerWord, target, &tmp, offset(con));
   callR(con, TargetBytesPerWord, &tmp);
 }
 
@@ -1891,7 +1891,7 @@ longJumpC(Context* con, unsigned size UNUSED, Assembler::Constant* target)
   assert(con, size == TargetBytesPerWord);
 
   Assembler::Register tmp(4); // a non-arg reg that we don't mind clobbering
-  moveCR2(con, TargetBytesPerWord, target, &tmp, _offset(con));
+  moveCR2(con, TargetBytesPerWord, target, &tmp, offset(con));
   jumpR(con, TargetBytesPerWord, &tmp);
 }
 
@@ -1900,7 +1900,7 @@ jumpC(Context* con, unsigned size UNUSED, Assembler::Constant* target)
 {
   assert(con, size == TargetBytesPerWord);
 
-  appendOffsetTask(con, target->value, _offset(con));
+  appendOffsetTask(con, target->value, offset(con));
   emit(con, b(0));
 }
 
@@ -1922,13 +1922,13 @@ memoryBarrier(Context*) {}
 // END OPERATION COMPILERS
 
 unsigned
-_argumentFootprint(unsigned footprint)
+argumentFootprint(unsigned footprint)
 {
   return max(pad(footprint, StackAlignmentInWords), StackAlignmentInWords);
 }
 
 void
-_nextFrame(ArchitectureContext* con, uint32_t* start, unsigned size UNUSED,
+nextFrame(ArchitectureContext* con, uint32_t* start, unsigned size UNUSED,
           unsigned footprint, void* link, bool,
           unsigned targetParameterFootprint UNUSED, void** ip, void** stack)
 {
@@ -1961,8 +1961,8 @@ _nextFrame(ArchitectureContext* con, uint32_t* start, unsigned size UNUSED,
   }
 
   if (TailCalls) {
-    if (_argumentFootprint(targetParameterFootprint) > StackAlignmentInWords) {
-      offset += _argumentFootprint(targetParameterFootprint)
+    if (argumentFootprint(targetParameterFootprint) > StackAlignmentInWords) {
+      offset += argumentFootprint(targetParameterFootprint)
         - StackAlignmentInWords;
     }
 
@@ -2150,7 +2150,7 @@ class MyArchitecture: public Assembler::Architecture {
   }
 
   virtual unsigned argumentFootprint(unsigned footprint) {
-    return _argumentFootprint(footprint);
+    return local::argumentFootprint(footprint);
   }
 
   virtual bool argumentAlignment() {
@@ -2239,7 +2239,7 @@ class MyArchitecture: public Assembler::Architecture {
                          unsigned targetParameterFootprint, void** ip,
                          void** stack)
   {
-    _nextFrame(&con, static_cast<uint32_t*>(start), size, footprint, link,
+    local::nextFrame(&con, static_cast<uint32_t*>(start), size, footprint, link,
                 mostRecent, targetParameterFootprint, ip, stack);
   }
 
@@ -2550,11 +2550,12 @@ class MyAssembler: public Assembler {
   }
 
   virtual void pushFrame(unsigned argumentCount, ...) {
-    struct {
+    struct Argument {
       unsigned size;
       OperandType type;
       Operand* operand;
-    } arguments[200]; // FIXME: argumentCount
+    };
+    Argument* arguments = new Argument[argumentCount];
 
     va_list a; va_start(a, argumentCount);
     unsigned footprint = 0;
@@ -2589,6 +2590,9 @@ class MyAssembler: public Assembler {
         offset += ceiling(arguments[i].size, TargetBytesPerWord);
       }
     }
+
+    delete[] arguments;
+    arguments = 0;
   }
 
   virtual void allocateFrame(unsigned footprint) {
@@ -2798,7 +2802,7 @@ class MyAssembler: public Assembler {
         bool jump = needJump(b);
         if (jump) {
           write4
-			  (dst + dstOffset, isa::b((poolSize + TargetBytesPerWord - 8) >> 2));
+            (dst + dstOffset, isa::b((poolSize + TargetBytesPerWord - 8) >> 2));
         }
 
         dstOffset += poolSize + (jump ? TargetBytesPerWord : 0);
@@ -2832,7 +2836,7 @@ class MyAssembler: public Assembler {
   }
 
   virtual Promise* offset(bool forTrace) {
-    return _offset(&con, forTrace);
+    return local::offset(&con, forTrace);
   }
 
   virtual Block* endBlock(bool startNew) {
@@ -2903,15 +2907,15 @@ namespace vm {
 Assembler::Architecture*
 makeArchitecture(System* system, bool)
 {
-  return new (allocate(system, sizeof(MyArchitecture))) MyArchitecture(system);
+  return new (allocate(system, sizeof(local::MyArchitecture))) local::MyArchitecture(system);
 }
 
 Assembler*
 makeAssembler(System* system, Allocator* allocator, Zone* zone,
               Assembler::Architecture* architecture)
 {
-  return new(zone) MyAssembler(system, allocator, zone,
-                static_cast<MyArchitecture*>(architecture));
+  return new(zone) local::MyAssembler(system, allocator, zone,
+                static_cast<local::MyArchitecture*>(architecture));
 }
 
 } // namespace vm

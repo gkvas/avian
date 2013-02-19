@@ -51,7 +51,8 @@ ifeq ($(continuations),true)
 endif
 
 root := $(shell (cd .. && pwd))
-build = $(build-prefix)build/$(platform)-$(arch)$(options)
+build = build/$(platform)-$(arch)$(options)
+host-build-root = $(build)/host
 classpath-build = $(build)/classpath
 test-build = $(build)/test
 src = src
@@ -135,7 +136,7 @@ ifneq ($(openjdk),)
 		javahome = "$$($(native-path) "$(openjdk)/jre")"
 	endif
 
-  classpath = openjdk
+	classpath = openjdk
 	boot-classpath := "$(boot-classpath)$(path-separator)$$($(native-path) "$(openjdk)/jre/lib/rt.jar")"
 	build-javahome = $(openjdk)/jre
 endif
@@ -617,7 +618,7 @@ ifeq ($(platform),wp8)
 		# Environment variable WP8_SDK not found. It should be something like
 		# "C:\Program Files[ (x86)]\Microsoft Visual Studio 11.0\VC\WPSDK\WP80"
 		# TODO: Lookup in SOFTWARE\Microsoft\Microsoft SDKs\WindowsPhone\v8.0
-		WP80_SDK = C:\$(programFiles)\Microsoft Visual Studio 11.0\VC\WPSDK\WP80
+		WP80_SDK = $(MSVS_ROOT)\VC\WPSDK\WP80
 	endif
 	ifeq ($(WP80_KIT),)
 		# Environment variable WP8_KIT not found. It should be something like
@@ -640,7 +641,8 @@ ifeq ($(platform),wp8)
 	ms_cl_compiler = wp8
 	use-lto = false
 	supports_avian_executable = false
-	process = interpret
+	process = compile
+	aot_only = true
 	ifneq ($(process),compile)
 		options := -$(process)
 	endif
@@ -664,18 +666,17 @@ ifeq ($(platform),wp8)
 		as = "$$(cygpath -u "$(WP80_SDK)\bin\x86_arm\armasm.exe")"
 		cxx = "$$(cygpath -u "$(WP80_SDK)\bin\x86_arm\cl.exe")"
 		ld = "$$(cygpath -u "$(WP80_SDK)\bin\x86_arm\link.exe")"
-		asmflags = -machine ARM -32
+		asmflags = $(target-cflags) -machine ARM -32
 		asm-output = -o $(1)
 		asm-input = $(1)
 		machine_type = ARM
-		bootimage-symbols = binary_bootimage_bin_start:binary_bootimage_bin_end
-		codeimage-symbols = binary_codeimage_bin_start:binary_codeimage_bin_end
 	endif
 	ifeq ($(arch),i386)
 		wp8_arch =
 		vc_arch =
 		w8kit_arch = x86
 		deps_arch = x86
+		asmflags = $(target-cflags) -safeseh
 		as = "$$(cygpath -u "$(WP80_SDK)\bin\ml.exe")"
 		cxx = "$$(cygpath -u "$(WP80_SDK)\bin\cl.exe")"
 		ld = "$$(cygpath -u "$(WP80_SDK)\bin\link.exe")"
@@ -703,12 +704,31 @@ ifeq ($(platform),wp8)
 
 	common-lflags = $(classpath-lflags)
 
+	ifeq ($(mode),debug)
+		build-type = Debug
+	endif
+	ifeq ($(mode),debug-fast)
+		build-type = Debug
+	endif
+	ifeq ($(mode),stress_major)
+		build-type = Release
+	endif
+	ifeq ($(mode),fast)
+		build-type = Release
+	endif
+	ifeq ($(mode),fast)
+		build-type = Release
+	endif
+	ifeq ($(mode),small)
+		build-type = Release
+	endif
+
 	arflags = -MACHINE:$(machine_type)
 	lflags = $(common-lflags) -nologo \
 		-MACHINE:$(machine_type) \
 		-LIBPATH:"$(WP80_KIT)\lib\$(w8kit_arch)" -LIBPATH:"$(WIN8_KIT)\Lib\win8\um\$(w8kit_arch)" -LIBPATH:"$(MSVC_ROOT)\lib$(vc_arch)" \
 		ws2_32.lib \
-		"$(shell $(windows-path) "$(wp8)\lib\$(deps_arch)\zlib.lib")" "$(shell $(windows-path) "$(wp8)\lib\$(deps_arch)\ThreadEmulation.lib")"
+		"$(shell $(windows-path) "$(wp8)\lib\$(deps_arch)\$(build-type)\zlib.lib")" "$(shell $(windows-path) "$(wp8)\lib\$(deps_arch)\$(build-type)\ThreadEmulation.lib")"
 
 	cc = $(cxx)
 	asm-format = masm
@@ -918,6 +938,9 @@ ifeq ($(process),compile)
 	vm-asm-sources += $(src)/compile-$(asm).$(asm-format)
 endif
 cflags += -DAVIAN_PROCESS_$(process)
+ifdef aot_only
+	cflags += -DAVIAN_AOT_ONLY
+endif
 
 vm-cpp-objects = $(call cpp-objects,$(vm-sources),$(src),$(build))
 vm-asm-objects = $(call asm-objects,$(vm-asm-sources),$(src),$(build))
@@ -1212,7 +1235,9 @@ clean:
 	@echo "removing build"
 	rm -rf build
 
+ifeq ($(continuations),true)
 $(build)/compile-x86-asm.o: $(src)/continuations-x86.$(asm-format)
+endif
 
 gen-arg = $(shell echo $(1) | sed -e 's:$(build)/type-\(.*\)\.cpp:\1:')
 $(generated-code): %.cpp: $(src)/types.def $(generator) $(classpath-dep)
@@ -1430,7 +1455,7 @@ else
 endif
 
 $(bootimage-object) $(codeimage-object): $(bootimage-generator)
-	@echo "generating bootimage and codeimage binaries using $(<)"
+	@echo "generating bootimage and codeimage binaries from $(classpath-build) using $(<)"
 	$(<) -cp $(classpath-build) -bootimage $(bootimage-object) -codeimage $(codeimage-object) \
 		-bootimage-symbols $(bootimage-symbols) \
 		-codeimage-symbols $(codeimage-symbols)
@@ -1459,9 +1484,9 @@ endif
 	$(strip) $(strip-all) $(@)
 
 $(bootimage-generator): $(bootimage-generator-objects)
-	echo arch=$(arch) platform=$(platform)
+	echo building $(bootimage-generator) arch=$(build-arch) platform=$(bootimage-platform)
 	$(MAKE) mode=$(mode) \
-		build-prefix=$(build)/host/ \
+		build=$(host-build-root) \
 		arch=$(build-arch) \
 		target-arch=$(arch) \
 		platform=$(bootimage-platform) \
@@ -1501,8 +1526,8 @@ $(dynamic-library): $(vm-objects) $(dynamic-object) $(classpath-objects) \
 		$(lzma-decode-objects)
 	@echo "linking $(@)"
 ifdef ms_cl_compiler
-	$(ld) $(shared) $(lflags) $(^) -out:$(@) -PDB:$(@).pdb \
-		-IMPLIB:$(build)/$(name).lib $(manifest-flags)
+	$(ld) $(shared) $(lflags) $(^) -out:$(@) -PDB:$(subst .dll,.pdb,$(@)) \
+		-IMPLIB:$(subst .dll,.lib,$(@)) $(manifest-flags)
 ifdef mt
 	$(mt) -nologo -manifest $(@).manifest -outputresource:"$(@);2"
 endif
