@@ -13,11 +13,16 @@
 
 #include "common.h"
 #include "system.h"
-#include "heap.h"
+#include "heap/heap.h"
 #include "bootimage.h"
 #include "heapwalk.h"
 #include "zone.h"
-#include "assembler.h"
+
+namespace avian {
+namespace codegen {
+class DelayedPromise;
+}
+}
 
 namespace vm {
 
@@ -142,7 +147,7 @@ class Processor {
 
   virtual void
   compileMethod(Thread* t, Zone* zone, object* constants, object* calls,
-                DelayedPromise** addresses, object method,
+                avian::codegen::DelayedPromise** addresses, object method,
                 OffsetResolver* resolver) = 0;
 
   virtual void

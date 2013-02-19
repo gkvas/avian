@@ -16,6 +16,8 @@
 #include "process.h"
 #include "arch.h"
 
+#include "util/runtime-array.h"
+
 using namespace vm;
 
 namespace local {
@@ -733,26 +735,26 @@ pushField(Thread* t, object target, object field)
   switch (fieldCode(t, field)) {
   case ByteField:
   case BooleanField:
-    pushInt(t, cast<int8_t>(target, fieldOffset(t, field)));
+    pushInt(t, fieldAtOffset<int8_t>(target, fieldOffset(t, field)));
     break;
 
   case CharField:
   case ShortField:
-    pushInt(t, cast<int16_t>(target, fieldOffset(t, field)));
+    pushInt(t, fieldAtOffset<int16_t>(target, fieldOffset(t, field)));
     break;
 
   case FloatField:
   case IntField:
-    pushInt(t, cast<int32_t>(target, fieldOffset(t, field)));
+    pushInt(t, fieldAtOffset<int32_t>(target, fieldOffset(t, field)));
     break;
 
   case DoubleField:
   case LongField:
-    pushLong(t, cast<int64_t>(target, fieldOffset(t, field)));
+    pushLong(t, fieldAtOffset<int64_t>(target, fieldOffset(t, field)));
     break;
 
   case ObjectField:
-    pushObject(t, cast<object>(target, fieldOffset(t, field)));
+    pushObject(t, fieldAtOffset<object>(target, fieldOffset(t, field)));
     break;
 
   default:
@@ -902,7 +904,7 @@ interpret3(Thread* t, const int base)
   case arraylength: {
     object array = popObject(t);
     if (LIKELY(array)) {
-      pushInt(t, cast<uintptr_t>(array, BytesPerWord));
+      pushInt(t, fieldAtOffset<uintptr_t>(array, BytesPerWord));
     } else {
       exception = makeThrowable(t, Machine::NullPointerExceptionType);
       goto throw_;
@@ -2323,19 +2325,19 @@ interpret3(Thread* t, const int base)
 
     THREAD_RUNTIME_ARRAY(t, int32_t, counts, dimensions);
     for (int i = dimensions - 1; i >= 0; --i) {
-      counts[i] = popInt(t);
-      if (UNLIKELY(counts[i] < 0)) {
+      THREAD_RUNTIME_ARRAY_BODY(counts)[i] = popInt(t);
+      if (UNLIKELY(THREAD_RUNTIME_ARRAY_BODY(counts)[i] < 0)) {
         exception = makeThrowable
-          (t, Machine::NegativeArraySizeExceptionType, "%d", counts[i]);
+          (t, Machine::NegativeArraySizeExceptionType, "%d", THREAD_RUNTIME_ARRAY_BODY(counts)[i]);
         goto throw_;
       }
     }
 
-    object array = makeArray(t, counts[0]);
+    object array = makeArray(t, THREAD_RUNTIME_ARRAY_BODY(counts)[0]);
     setObjectClass(t, array, class_);
     PROTECT(t, array);
 
-    populateMultiArray(t, array, counts, 0, dimensions);
+    populateMultiArray(t, array, THREAD_RUNTIME_ARRAY_BODY(counts), 0, dimensions);
 
     pushObject(t, array);
   } goto loop;
@@ -2436,17 +2438,17 @@ interpret3(Thread* t, const int base)
           switch (fieldCode(t, field)) {
           case ByteField:
           case BooleanField:
-            cast<int8_t>(o, fieldOffset(t, field)) = value;
+            fieldAtOffset<int8_t>(o, fieldOffset(t, field)) = value;
             break;
             
           case CharField:
           case ShortField:
-            cast<int16_t>(o, fieldOffset(t, field)) = value;
+            fieldAtOffset<int16_t>(o, fieldOffset(t, field)) = value;
             break;
             
           case FloatField:
           case IntField:
-            cast<int32_t>(o, fieldOffset(t, field)) = value;
+            fieldAtOffset<int32_t>(o, fieldOffset(t, field)) = value;
             break;
           }
         } else {
@@ -2459,7 +2461,7 @@ interpret3(Thread* t, const int base)
         int64_t value = popLong(t);
         object o = popObject(t);
         if (LIKELY(o)) {
-          cast<int64_t>(o, fieldOffset(t, field)) = value;
+          fieldAtOffset<int64_t>(o, fieldOffset(t, field)) = value;
         } else {
           exception = makeThrowable(t, Machine::NullPointerExceptionType);
         }
@@ -2510,24 +2512,24 @@ interpret3(Thread* t, const int base)
       switch (fieldCode(t, field)) {
       case ByteField:
       case BooleanField:
-        cast<int8_t>(table, fieldOffset(t, field)) = value;
+        fieldAtOffset<int8_t>(table, fieldOffset(t, field)) = value;
         break;
             
       case CharField:
       case ShortField:
-        cast<int16_t>(table, fieldOffset(t, field)) = value;
+        fieldAtOffset<int16_t>(table, fieldOffset(t, field)) = value;
         break;
             
       case FloatField:
       case IntField:
-        cast<int32_t>(table, fieldOffset(t, field)) = value;
+        fieldAtOffset<int32_t>(table, fieldOffset(t, field)) = value;
         break;
       }
     } break;
 
     case DoubleField:
     case LongField: {
-      cast<int64_t>(table, fieldOffset(t, field)) = popLong(t);
+      fieldAtOffset<int64_t>(table, fieldOffset(t, field)) = popLong(t);
     } break;
 
     case ObjectField: {
@@ -2850,11 +2852,11 @@ pushArguments(Thread* t, object this_, const char* spec, object a)
       
     case 'J':
     case 'D':
-      pushLong(t, cast<int64_t>(objectArrayBody(t, a, index++), 8));
+      pushLong(t, fieldAtOffset<int64_t>(objectArrayBody(t, a, index++), 8));
       break;
 
     default:
-      pushInt(t, cast<int32_t>(objectArrayBody(t, a, index++),
+      pushInt(t, fieldAtOffset<int32_t>(objectArrayBody(t, a, index++),
                                BytesPerWord));
       break;        
     }
@@ -3191,7 +3193,7 @@ class MyProcessor: public Processor {
   }
 
   virtual void compileMethod(vm::Thread*, Zone*, object*, object*,
-                             DelayedPromise**, object, OffsetResolver*)
+                             avian::codegen::DelayedPromise**, object, OffsetResolver*)
   {
     abort(s);
   }

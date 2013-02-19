@@ -10,12 +10,15 @@
 
 #include "machine.h"
 #include "util.h"
-#include "vector.h"
+#include "alloc-vector.h"
 #include "process.h"
-#include "assembler.h"
 #include "target.h"
-#include "compiler.h"
+#include "codegen/assembler.h"
+#include "codegen/compiler.h"
+#include "codegen/targets.h"
 #include "arch.h"
+
+#include "util/runtime-array.h"
 
 using namespace vm;
 
@@ -33,6 +36,8 @@ extern "C" void
 vmJumpAndInvoke(void* thread, void* function, void* stack,
                 unsigned argumentFootprint, uintptr_t* arguments,
                 unsigned frameSize);
+
+using avian::codegen::Compiler;
 
 namespace {
 
@@ -265,7 +270,7 @@ class MyThread: public Thread {
     reference(0),
     arch(parent
          ? parent->arch
-         : makeArchitecture(m->system, useNativeFeatures)),
+         : avian::codegen::makeArchitectureNative(m->system, useNativeFeatures)),
     transition(0),
     traceContext(0),
     stackLimit(0),
@@ -291,7 +296,7 @@ class MyThread: public Thread {
   void** thunkTable;
   CallTrace* trace;
   Reference* reference;
-  Assembler::Architecture* arch;
+  avian::codegen::Assembler::Architecture* arch;
   Context* transition;
   TraceContext* traceContext;
   uintptr_t stackLimit;
@@ -737,7 +742,7 @@ stackForFrame(MyThread* t, void* frame, object method)
   return static_cast<void**>(frame) - stackOffsetFromFrame(t, method);
 }
 
-class PoolElement: public Promise {
+class PoolElement: public avian::codegen::Promise {
  public:
   PoolElement(Thread* t, object target, PoolElement* next):
     t(t), target(target), address(0), next(next)
@@ -793,7 +798,7 @@ class SubroutinePath;
 
 class SubroutineCall {
  public:
-  SubroutineCall(Subroutine* subroutine, Promise* returnAddress):
+  SubroutineCall(Subroutine* subroutine, avian::codegen::Promise* returnAddress):
     subroutine(subroutine),
     returnAddress(returnAddress),
     paths(0),
@@ -804,7 +809,7 @@ class SubroutineCall {
   }
 
   Subroutine* subroutine;
-  Promise* returnAddress;
+  avian::codegen::Promise* returnAddress;
   SubroutinePath* paths;
   SubroutineCall* next;
 };
@@ -863,7 +868,7 @@ class SubroutineTrace {
   uintptr_t map[0];
 };
 
-class TraceElement: public TraceHandler {
+class TraceElement: public avian::codegen::TraceHandler {
  public:
   static const unsigned VirtualCall = 1 << 0;
   static const unsigned TailCall    = 1 << 1;
@@ -885,7 +890,7 @@ class TraceElement: public TraceHandler {
     memset(map, 0xFF, mapSize * BytesPerWord);
   }
 
-  virtual void handleTrace(Promise* address, unsigned argumentIndex) {
+  virtual void handleTrace(avian::codegen::Promise* address, unsigned argumentIndex) {
     if (this->address == 0) {
       this->address = address;
       this->argumentIndex = argumentIndex;
@@ -893,7 +898,7 @@ class TraceElement: public TraceHandler {
   }
 
   Context* context;
-  Promise* address;
+  avian::codegen::Promise* address;
   TraceElement* next;
   SubroutineTrace* subroutineTrace;
   object target;
@@ -905,7 +910,7 @@ class TraceElement: public TraceHandler {
   uintptr_t map[0];
 };
 
-class TraceElementPromise: public Promise {
+class TraceElementPromise: public avian::codegen::Promise {
  public:
   TraceElementPromise(System* s, TraceElement* trace): s(s), trace(trace) { }
 
@@ -943,7 +948,7 @@ frameMapSizeInBits(MyThread* t, object method)
 unsigned
 frameMapSizeInWords(MyThread* t, object method)
 {
-  return ceiling(frameMapSizeInBits(t, method), BitsPerWord);
+  return ceilingDivide(frameMapSizeInBits(t, method), BitsPerWord);
 }
 
 uint16_t*
@@ -994,7 +999,7 @@ class BootContext {
   };
 
   BootContext(Thread* t, object constants, object calls,
-              DelayedPromise* addresses, Zone* zone, OffsetResolver* resolver):
+              avian::codegen::DelayedPromise* addresses, Zone* zone, OffsetResolver* resolver):
     protector(t, this), constants(constants), calls(calls),
     addresses(addresses), addressSentinal(addresses), zone(zone),
     resolver(resolver)
@@ -1003,8 +1008,8 @@ class BootContext {
   MyProtector protector;
   object constants;
   object calls;
-  DelayedPromise* addresses;
-  DelayedPromise* addressSentinal;
+  avian::codegen::DelayedPromise* addresses;
+  avian::codegen::DelayedPromise* addressSentinal;
   Zone* zone;
   OffsetResolver* resolver;
 };
@@ -1045,32 +1050,32 @@ class Context {
    public:
     MyClient(MyThread* t): t(t) { }
 
-    virtual intptr_t getThunk(UnaryOperation, unsigned) {
+    virtual intptr_t getThunk(avian::codegen::lir::UnaryOperation, unsigned) {
       abort(t);
     }
     
-    virtual intptr_t getThunk(BinaryOperation op, unsigned size,
+    virtual intptr_t getThunk(avian::codegen::lir::BinaryOperation op, unsigned size,
                               unsigned resultSize)
     {
       if (size == 8) {
         switch(op) {
-        case Absolute:
+        case avian::codegen::lir::Absolute:
           assert(t, resultSize == 8);
           return local::getThunk(t, absoluteLongThunk);
 
-        case FloatNegate:
+        case avian::codegen::lir::FloatNegate:
           assert(t, resultSize == 8);
           return local::getThunk(t, negateDoubleThunk);
 
-        case FloatSquareRoot:
+        case avian::codegen::lir::FloatSquareRoot:
           assert(t, resultSize == 8);
           return local::getThunk(t, squareRootDoubleThunk);
 
-        case Float2Float:
+        case avian::codegen::lir::Float2Float:
           assert(t, resultSize == 4);
           return local::getThunk(t, doubleToFloatThunk);
 
-        case Float2Int:
+        case avian::codegen::lir::Float2Int:
           if (resultSize == 8) {
             return local::getThunk(t, doubleToLongThunk);
           } else {
@@ -1078,7 +1083,7 @@ class Context {
             return local::getThunk(t, doubleToIntThunk);
           }
 
-        case Int2Float:
+        case avian::codegen::lir::Int2Float:
           if (resultSize == 8) {
             return local::getThunk(t, longToDoubleThunk);
           } else {
@@ -1092,23 +1097,23 @@ class Context {
         assert(t, size == 4);
 
         switch(op) {
-        case Absolute:
+        case avian::codegen::lir::Absolute:
           assert(t, resultSize == 4);
           return local::getThunk(t, absoluteIntThunk);
 
-        case FloatNegate:
+        case avian::codegen::lir::FloatNegate:
           assert(t, resultSize == 4);
           return local::getThunk(t, negateFloatThunk);
 
-        case FloatAbsolute:
+        case avian::codegen::lir::FloatAbsolute:
           assert(t, resultSize == 4);
           return local::getThunk(t, absoluteFloatThunk);
 
-        case Float2Float:
+        case avian::codegen::lir::Float2Float:
           assert(t, resultSize == 8);
           return local::getThunk(t, floatToDoubleThunk);
 
-        case Float2Int:
+        case avian::codegen::lir::Float2Int:
           if (resultSize == 4) {
             return local::getThunk(t, floatToIntThunk);
           } else {
@@ -1116,7 +1121,7 @@ class Context {
             return local::getThunk(t, floatToLongThunk);
           }
 
-        case Int2Float:
+        case avian::codegen::lir::Int2Float:
           if (resultSize == 4) {
             return local::getThunk(t, intToFloatThunk);
           } else {
@@ -1129,48 +1134,48 @@ class Context {
       }
     }
 
-    virtual intptr_t getThunk(TernaryOperation op, unsigned size, unsigned,
+    virtual intptr_t getThunk(avian::codegen::lir::TernaryOperation op, unsigned size, unsigned,
                               bool* threadParameter)
     {
       *threadParameter = false;
 
       if (size == 8) {
         switch (op) {
-        case Divide:
+        case avian::codegen::lir::Divide:
           *threadParameter = true;
           return local::getThunk(t, divideLongThunk);
 
-        case Remainder:
+        case avian::codegen::lir::Remainder:
           *threadParameter = true;
           return local::getThunk(t, moduloLongThunk);
 
-        case FloatAdd:
+        case avian::codegen::lir::FloatAdd:
           return local::getThunk(t, addDoubleThunk);
 
-        case FloatSubtract:
+        case avian::codegen::lir::FloatSubtract:
           return local::getThunk(t, subtractDoubleThunk);
 
-        case FloatMultiply:
+        case avian::codegen::lir::FloatMultiply:
           return local::getThunk(t, multiplyDoubleThunk);
 
-        case FloatDivide:
+        case avian::codegen::lir::FloatDivide:
           return local::getThunk(t, divideDoubleThunk);
 
-        case FloatRemainder:
+        case avian::codegen::lir::FloatRemainder:
           return local::getThunk(t, moduloDoubleThunk);
 
-        case JumpIfFloatEqual:
-        case JumpIfFloatNotEqual:
-        case JumpIfFloatLess:
-        case JumpIfFloatGreater:
-        case JumpIfFloatLessOrEqual:
-        case JumpIfFloatGreaterOrUnordered:
-        case JumpIfFloatGreaterOrEqualOrUnordered:
+        case avian::codegen::lir::JumpIfFloatEqual:
+        case avian::codegen::lir::JumpIfFloatNotEqual:
+        case avian::codegen::lir::JumpIfFloatLess:
+        case avian::codegen::lir::JumpIfFloatGreater:
+        case avian::codegen::lir::JumpIfFloatLessOrEqual:
+        case avian::codegen::lir::JumpIfFloatGreaterOrUnordered:
+        case avian::codegen::lir::JumpIfFloatGreaterOrEqualOrUnordered:
           return local::getThunk(t, compareDoublesGThunk);
 
-        case JumpIfFloatGreaterOrEqual:
-        case JumpIfFloatLessOrUnordered:
-        case JumpIfFloatLessOrEqualOrUnordered:
+        case avian::codegen::lir::JumpIfFloatGreaterOrEqual:
+        case avian::codegen::lir::JumpIfFloatLessOrUnordered:
+        case avian::codegen::lir::JumpIfFloatLessOrEqualOrUnordered:
           return local::getThunk(t, compareDoublesLThunk);
 
         default: abort(t);
@@ -1178,41 +1183,41 @@ class Context {
       } else {
         assert(t, size == 4);
         switch (op) {
-        case Divide:
+        case avian::codegen::lir::Divide:
           *threadParameter = true;
           return local::getThunk(t, divideIntThunk);
 
-        case Remainder:
+        case avian::codegen::lir::Remainder:
           *threadParameter = true;
           return local::getThunk(t, moduloIntThunk);
 
-        case FloatAdd:
+        case avian::codegen::lir::FloatAdd:
           return local::getThunk(t, addFloatThunk);
 
-        case FloatSubtract:
+        case avian::codegen::lir::FloatSubtract:
           return local::getThunk(t, subtractFloatThunk);
 
-        case FloatMultiply:
+        case avian::codegen::lir::FloatMultiply:
           return local::getThunk(t, multiplyFloatThunk);
 
-        case FloatDivide:
+        case avian::codegen::lir::FloatDivide:
           return local::getThunk(t, divideFloatThunk);
 
-        case FloatRemainder:
+        case avian::codegen::lir::FloatRemainder:
           return local::getThunk(t, moduloFloatThunk);
 
-        case JumpIfFloatEqual:
-        case JumpIfFloatNotEqual:
-        case JumpIfFloatLess:
-        case JumpIfFloatGreater:
-        case JumpIfFloatLessOrEqual:
-        case JumpIfFloatGreaterOrUnordered:
-        case JumpIfFloatGreaterOrEqualOrUnordered:
+        case avian::codegen::lir::JumpIfFloatEqual:
+        case avian::codegen::lir::JumpIfFloatNotEqual:
+        case avian::codegen::lir::JumpIfFloatLess:
+        case avian::codegen::lir::JumpIfFloatGreater:
+        case avian::codegen::lir::JumpIfFloatLessOrEqual:
+        case avian::codegen::lir::JumpIfFloatGreaterOrUnordered:
+        case avian::codegen::lir::JumpIfFloatGreaterOrEqualOrUnordered:
           return local::getThunk(t, compareFloatsGThunk);
 
-        case JumpIfFloatGreaterOrEqual:
-        case JumpIfFloatLessOrUnordered:
-        case JumpIfFloatLessOrEqualOrUnordered:
+        case avian::codegen::lir::JumpIfFloatGreaterOrEqual:
+        case avian::codegen::lir::JumpIfFloatLessOrUnordered:
+        case avian::codegen::lir::JumpIfFloatLessOrEqualOrUnordered:
           return local::getThunk(t, compareFloatsLThunk);
 
         default: abort(t);
@@ -1226,7 +1231,7 @@ class Context {
   Context(MyThread* t, BootContext* bootContext, object method):
     thread(t),
     zone(t->m->system, t->m->heap, InitialZoneCapacityInBytes),
-    assembler(makeAssembler(t->m->system, t->m->heap, &zone, t->arch)),
+    assembler(t->arch->makeAssembler(t->m->heap, &zone)),
     client(t),
     compiler(makeCompiler(t->m->system, assembler, &zone, &client)),
     method(method),
@@ -1252,7 +1257,7 @@ class Context {
   Context(MyThread* t):
     thread(t),
     zone(t->m->system, t->m->heap, InitialZoneCapacityInBytes),
-    assembler(makeAssembler(t->m->system, t->m->heap, &zone, t->arch)),
+    assembler(t->arch->makeAssembler(t->m->heap, &zone)),
     client(t),
     compiler(0),
     method(0),
@@ -1297,9 +1302,9 @@ class Context {
 
   MyThread* thread;
   Zone zone;
-  Assembler* assembler;
+  avian::codegen::Assembler* assembler;
   MyClient client;
-  Compiler* compiler;
+  avian::codegen::Compiler* compiler;
   object method;
   BootContext* bootContext;
   PoolElement* objectPool;
@@ -1359,6 +1364,8 @@ class Frame {
     Object
   };
 
+  typedef Compiler::Operand* Value;
+
   Frame(Context* context, uint8_t* stackMap):
     context(context),
     t(context->thread),
@@ -1400,10 +1407,10 @@ class Frame {
     }
   }
 
-  Compiler::Operand* append(object o) {
+  Value append(object o) {
     BootContext* bc = context->bootContext;
     if (bc) {
-      Promise* p = new (bc->zone) ListenPromise(t->m->system, bc->zone);
+      avian::codegen::Promise* p = new (bc->zone) avian::codegen::ListenPromise(t->m->system, bc->zone);
 
       PROTECT(t, o);
       object pointer = makePointer(t, p);
@@ -1623,34 +1630,34 @@ class Frame {
     set(sp - 2, saved);
   }
 
-  Promise* addressPromise(Promise* p) {
+  avian::codegen::Promise* addressPromise(avian::codegen::Promise* p) {
     BootContext* bc = context->bootContext;
     if (bc) {
-      bc->addresses = new(bc->zone) DelayedPromise(t->m->system, bc->zone, p, bc->addresses);
+      bc->addresses = new(bc->zone) avian::codegen::DelayedPromise(t->m->system, bc->zone, p, bc->addresses);
       return bc->addresses;
     } else {
       return p;
     }
   }
 
-  Compiler::Operand* addressOperand(Promise* p) {
+  Value addressOperand(avian::codegen::Promise* p) {
     return c->promiseConstant(p, Compiler::AddressType);
   }
 
-  Compiler::Operand* absoluteAddressOperand(Promise* p) {
+  Value absoluteAddressOperand(avian::codegen::Promise* p) {
     return context->bootContext
       ? c->add
         (TargetBytesPerWord, c->memory
          (c->register_(t->arch->thread()), Compiler::AddressType,
           TARGET_THREAD_CODEIMAGE), c->promiseConstant
          (new(&context->zone)
-          OffsetPromise
+          avian::codegen::OffsetPromise
           (p, - reinterpret_cast<intptr_t>(codeAllocator(t)->base)),
           Compiler::AddressType))
       : addressOperand(p);
   }
 
-  Compiler::Operand* machineIp(unsigned logicalIp) {
+  Value machineIp(unsigned logicalIp) {
     return c->promiseConstant(c->machineIp(logicalIp), Compiler::AddressType);
   }
 
@@ -1674,35 +1681,33 @@ class Frame {
     this->ip = ip;
   }
 
-  void pushQuiet(unsigned footprint, Compiler::Operand* o) {
+  void pushQuiet(unsigned footprint, Value o) {
     c->push(footprint, o);
   }
 
-  void pushLongQuiet(Compiler::Operand* o) {
+  void pushLongQuiet(Value o) {
     pushQuiet(2, o);
   }
 
-  Compiler::Operand* popQuiet(unsigned footprint) {
+  Value popQuiet(unsigned footprint) {
     return c->pop(footprint);
   }
 
-  Compiler::Operand* popLongQuiet() {
-    Compiler::Operand* r = popQuiet(2);
-
-    return r;
+  Value popLongQuiet() {
+    return popQuiet(2);
   }
 
-  void pushInt(Compiler::Operand* o) {
+  void pushInt(Value o) {
     pushQuiet(1, o);
     pushedInt();
   }
 
-  void pushAddress(Compiler::Operand* o) {
+  void pushAddress(Value o) {
     pushQuiet(1, o);
     pushedInt();
   }
 
-  void pushObject(Compiler::Operand* o) {
+  void pushObject(Value o) {
     pushQuiet(1, o);
     pushedObject();
   }
@@ -1713,7 +1718,7 @@ class Frame {
     pushedObject();
   }
 
-  void pushLong(Compiler::Operand* o) {
+  void pushLong(Value o) {
     pushLongQuiet(o);
     pushedLong();
   }
@@ -1723,17 +1728,17 @@ class Frame {
     c->popped(count);
   }
 
-  Compiler::Operand* popInt() {
+  Value popInt() {
     poppedInt();
     return popQuiet(1);
   }
 
-  Compiler::Operand* popLong() {
+  Value popLong() {
     poppedLong();
     return popLongQuiet();
   }
   
-  Compiler::Operand* popObject() {
+  Value popObject() {
     poppedObject();
     return popQuiet(1);
   }
@@ -1789,8 +1794,8 @@ class Frame {
   }
 
   void dupX1() {
-    Compiler::Operand* s0 = popQuiet(1);
-    Compiler::Operand* s1 = popQuiet(1);
+    Value s0 = popQuiet(1);
+    Value s1 = popQuiet(1);
 
     pushQuiet(1, s0);
     pushQuiet(1, s1);
@@ -1800,17 +1805,17 @@ class Frame {
   }
 
   void dupX2() {
-    Compiler::Operand* s0 = popQuiet(1);
+    Value s0 = popQuiet(1);
 
     if (get(sp - 2) == Long) {
-      Compiler::Operand* s1 = popLongQuiet();
+      Value s1 = popLongQuiet();
 
       pushQuiet(1, s0);
       pushLongQuiet(s1);
       pushQuiet(1, s0);
     } else {
-      Compiler::Operand* s1 = popQuiet(1);
-      Compiler::Operand* s2 = popQuiet(1);
+      Value s1 = popQuiet(1);
+      Value s2 = popQuiet(1);
 
       pushQuiet(1, s0);
       pushQuiet(1, s2);
@@ -1825,8 +1830,8 @@ class Frame {
     if (get(sp - 1) == Long) {
       pushLongQuiet(c->peek(2, 0));
     } else {
-      Compiler::Operand* s0 = popQuiet(1);
-      Compiler::Operand* s1 = popQuiet(1);
+      Value s0 = popQuiet(1);
+      Value s1 = popQuiet(1);
 
       pushQuiet(1, s1);
       pushQuiet(1, s0);
@@ -1839,16 +1844,16 @@ class Frame {
 
   void dup2X1() {
     if (get(sp - 1) == Long) {
-      Compiler::Operand* s0 = popLongQuiet();
-      Compiler::Operand* s1 = popQuiet(1);
+      Value s0 = popLongQuiet();
+      Value s1 = popQuiet(1);
 
       pushLongQuiet(s0);
       pushQuiet(1, s1);
       pushLongQuiet(s0);
     } else {
-      Compiler::Operand* s0 = popQuiet(1);
-      Compiler::Operand* s1 = popQuiet(1);
-      Compiler::Operand* s2 = popQuiet(1);
+      Value s0 = popQuiet(1);
+      Value s1 = popQuiet(1);
+      Value s2 = popQuiet(1);
 
       pushQuiet(1, s1);
       pushQuiet(1, s0);
@@ -1862,17 +1867,17 @@ class Frame {
 
   void dup2X2() {
     if (get(sp - 1) == Long) {
-      Compiler::Operand* s0 = popLongQuiet();
+      Value s0 = popLongQuiet();
 
       if (get(sp - 3) == Long) {
-        Compiler::Operand* s1 = popLongQuiet();
+        Value s1 = popLongQuiet();
 
         pushLongQuiet(s0);
         pushLongQuiet(s1);
         pushLongQuiet(s0);
       } else {
-        Compiler::Operand* s1 = popQuiet(1);
-        Compiler::Operand* s2 = popQuiet(1);
+        Value s1 = popQuiet(1);
+        Value s2 = popQuiet(1);
 
         pushLongQuiet(s0);
         pushQuiet(1, s2);
@@ -1880,10 +1885,10 @@ class Frame {
         pushLongQuiet(s0);
       }
     } else {
-      Compiler::Operand* s0 = popQuiet(1);
-      Compiler::Operand* s1 = popQuiet(1);
-      Compiler::Operand* s2 = popQuiet(1);
-      Compiler::Operand* s3 = popQuiet(1);
+      Value s0 = popQuiet(1);
+      Value s1 = popQuiet(1);
+      Value s2 = popQuiet(1);
+      Value s3 = popQuiet(1);
 
       pushQuiet(1, s1);
       pushQuiet(1, s0);
@@ -1897,8 +1902,8 @@ class Frame {
   }
 
   void swap() {
-    Compiler::Operand* s0 = popQuiet(1);
-    Compiler::Operand* s1 = popQuiet(1);
+    Value s0 = popQuiet(1);
+    Value s1 = popQuiet(1);
 
     pushQuiet(1, s0);
     pushQuiet(1, s1);
@@ -1921,7 +1926,7 @@ class Frame {
     return e;
   }
 
-  unsigned startSubroutine(unsigned ip, Promise* returnAddress) {
+  unsigned startSubroutine(unsigned ip, avian::codegen::Promise* returnAddress) {
     pushAddress(absoluteAddressOperand(returnAddress));
 
     Subroutine* subroutine = 0;
@@ -1989,7 +1994,7 @@ class Frame {
   
   Context* context;
   MyThread* t;
-  Compiler* c;
+  avian::codegen::Compiler* c;
   Subroutine* subroutine;
   uint8_t* stackMap;
   unsigned ip;
@@ -2194,7 +2199,7 @@ makeCurrentContinuation(MyThread* t, void** targetIp, void** targetStack)
       unsigned argumentFootprint
         = t->arch->argumentFootprint(methodParameterFootprint(t, target));
       unsigned alignment = t->arch->stackAlignmentInWords();
-      if (TailCalls and argumentFootprint > alignment) {
+      if (avian::codegen::TailCalls and argumentFootprint > alignment) {
         top += argumentFootprint - alignment;
       }
 
@@ -3050,22 +3055,22 @@ getFieldValue(Thread* t, object target, object field)
   switch (fieldCode(t, field)) {
   case ByteField:
   case BooleanField:
-    return cast<int8_t>(target, fieldOffset(t, field));
+    return fieldAtOffset<int8_t>(target, fieldOffset(t, field));
 
   case CharField:
   case ShortField:
-    return cast<int16_t>(target, fieldOffset(t, field));
+    return fieldAtOffset<int16_t>(target, fieldOffset(t, field));
 
   case FloatField:
   case IntField:
-    return cast<int32_t>(target, fieldOffset(t, field));
+    return fieldAtOffset<int32_t>(target, fieldOffset(t, field));
 
   case DoubleField:
   case LongField:
-    return cast<int64_t>(target, fieldOffset(t, field));
+    return fieldAtOffset<int64_t>(target, fieldOffset(t, field));
 
   case ObjectField:
-    return cast<intptr_t>(target, fieldOffset(t, field));
+    return fieldAtOffset<intptr_t>(target, fieldOffset(t, field));
 
   default:
     abort(t);
@@ -3108,7 +3113,7 @@ setStaticLongFieldValueFromReference(MyThread* t, object pair, uint64_t value)
 
   ACQUIRE_FIELD_FOR_WRITE(t, field);
 
-  cast<int64_t>
+  fieldAtOffset<int64_t>
     (classStaticTable(t, fieldClass(t, field)), fieldOffset(t, field)) = value;
 }
 
@@ -3123,7 +3128,7 @@ setLongFieldValueFromReference(MyThread* t, object pair, object instance,
 
   ACQUIRE_FIELD_FOR_WRITE(t, field);
 
-  cast<int64_t>(instance, fieldOffset(t, field)) = value;
+  fieldAtOffset<int64_t>(instance, fieldOffset(t, field)) = value;
 }
 
 void
@@ -3163,17 +3168,17 @@ setFieldValue(MyThread* t, object target, object field, uint32_t value)
   switch (fieldCode(t, field)) {
   case ByteField:
   case BooleanField:
-    cast<int8_t>(target, fieldOffset(t, field)) = value;
+    fieldAtOffset<int8_t>(target, fieldOffset(t, field)) = value;
     break;
 
   case CharField:
   case ShortField:
-    cast<int16_t>(target, fieldOffset(t, field)) = value;
+    fieldAtOffset<int16_t>(target, fieldOffset(t, field)) = value;
     break;
 
   case FloatField:
   case IntField:
-    cast<int32_t>(target, fieldOffset(t, field)) = value;
+    fieldAtOffset<int32_t>(target, fieldOffset(t, field)) = value;
     break;
 
   default:
@@ -3379,11 +3384,11 @@ useLongJump(MyThread* t, uintptr_t target)
 
 Compiler::Operand*
 compileDirectInvoke(MyThread* t, Frame* frame, object target, bool tailCall,
-                    bool useThunk, unsigned rSize, Promise* addressPromise)
+                    bool useThunk, unsigned rSize, avian::codegen::Promise* addressPromise)
 {
-  Compiler* c = frame->c;
+  avian::codegen::Compiler* c = frame->c;
 
-  unsigned flags = (TailCalls and tailCall ? Compiler::TailJump : 0);
+  unsigned flags = (avian::codegen::TailCalls and tailCall ? Compiler::TailJump : 0);
   unsigned traceFlags;
 
   if (addressPromise == 0 and useLongJump(t, methodAddress(t, target))) {
@@ -3394,18 +3399,18 @@ compileDirectInvoke(MyThread* t, Frame* frame, object target, bool tailCall,
   }
 
   if (useThunk
-      or (TailCalls and tailCall and (methodFlags(t, target) & ACC_NATIVE)))
+      or (avian::codegen::TailCalls and tailCall and (methodFlags(t, target) & ACC_NATIVE)))
   {
     if (frame->context->bootContext == 0) {
       flags |= Compiler::Aligned;
     }
 
-    if (TailCalls and tailCall) {
+    if (avian::codegen::TailCalls and tailCall) {
       traceFlags |= TraceElement::TailCall;
 
       TraceElement* trace = frame->trace(target, traceFlags);
 
-      Promise* returnAddressPromise = new
+      avian::codegen::Promise* returnAddressPromise = new
         (frame->context->zone.allocate(sizeof(TraceElementPromise)))
         TraceElementPromise(t->m->system, trace);
 
@@ -3471,10 +3476,10 @@ compileDirectInvoke(MyThread* t, Frame* frame, object target, bool tailCall)
     if (bc) {
       if ((methodClass(t, target) == methodClass(t, frame->context->method)
            or (not classNeedsInit(t, methodClass(t, target))))
-          and (not (TailCalls and tailCall
+          and (not (avian::codegen::TailCalls and tailCall
                     and (methodFlags(t, target) & ACC_NATIVE))))
       {
-        Promise* p = new(bc->zone) ListenPromise(t->m->system, bc->zone);
+        avian::codegen::Promise* p = new(bc->zone) avian::codegen::ListenPromise(t->m->system, bc->zone);
 
         PROTECT(t, target);
         object pointer = makePointer(t, p);
@@ -3557,7 +3562,7 @@ void
 compileDirectReferenceInvoke(MyThread* t, Frame* frame, Thunk thunk,
                              object reference, bool isStatic, bool tailCall)
 {
-  Compiler* c = frame->c;
+  avian::codegen::Compiler* c = frame->c;
 
   PROTECT(t, reference);
 
@@ -3603,7 +3608,7 @@ void
 compileDirectAbstractInvoke(MyThread* t, Frame* frame, Thunk thunk,
                             object target, bool tailCall)
 {
-  Compiler* c = frame->c;
+  avian::codegen::Compiler* c = frame->c;
 
   compileAbstractInvoke
     (t, frame, c->call
@@ -3619,7 +3624,7 @@ compileDirectAbstractInvoke(MyThread* t, Frame* frame, Thunk thunk,
 void
 handleMonitorEvent(MyThread* t, Frame* frame, intptr_t function)
 {
-  Compiler* c = frame->c;
+  avian::codegen::Compiler* c = frame->c;
   object method = frame->context->method;
 
   if (methodFlags(t, method) & ACC_SYNCHRONIZED) {
@@ -3728,7 +3733,7 @@ bool
 isTailCall(MyThread* t, object code, unsigned ip, object caller,
            int calleeReturnCode)
 {
-  return TailCalls
+  return avian::codegen::TailCalls
     and ((methodFlags(t, caller) & ACC_SYNCHRONIZED) == 0)
     and (not inTryBlock(t, code, ip - 1))
     and (not needsReturnBarrier(t, caller))
@@ -3760,7 +3765,7 @@ integerBranch(MyThread* t, Frame* frame, object code, unsigned& ip,
     return false;
   }
 
-  Compiler* c = frame->c;
+  avian::codegen::Compiler* c = frame->c;
   unsigned instruction = codeBody(t, code, ip++);
   uint32_t offset = codeReadInt16(t, code, ip);
   uint32_t newIp = (ip - 3) + offset;
@@ -3811,7 +3816,7 @@ floatBranch(MyThread* t, Frame* frame, object code, unsigned& ip,
     return false;
   }
 
-  Compiler* c = frame->c;
+  avian::codegen::Compiler* c = frame->c;
   unsigned instruction = codeBody(t, code, ip++);
   uint32_t offset = codeReadInt16(t, code, ip);
   uint32_t newIp = (ip - 3) + offset;
@@ -3886,7 +3891,7 @@ intrinsic(MyThread* t, Frame* frame, object target)
 
   object className = vm::className(t, methodClass(t, target));
   if (UNLIKELY(MATCH(className, "java/lang/Math"))) {
-    Compiler* c = frame->c;
+    avian::codegen::Compiler* c = frame->c;
     if (MATCH(methodName(t, target), "sqrt")
         and MATCH(methodSpec(t, target), "(D)D"))
     {
@@ -3905,7 +3910,7 @@ intrinsic(MyThread* t, Frame* frame, object target)
       }
     }
   } else if (UNLIKELY(MATCH(className, "sun/misc/Unsafe"))) {
-    Compiler* c = frame->c;
+    avian::codegen::Compiler* c = frame->c;
     if (MATCH(methodName(t, target), "getByte")
         and MATCH(methodSpec(t, target), "(J)B"))
     {
@@ -4099,7 +4104,7 @@ class SwitchState {
               unsigned count,
               unsigned defaultIp,
               Compiler::Operand* key,
-              Promise* start,
+              avian::codegen::Promise* start,
               int bottom,
               int top):
     state(state),
@@ -4126,7 +4131,7 @@ class SwitchState {
   unsigned count;
   unsigned defaultIp;
   Compiler::Operand* key;
-  Promise* start;
+  avian::codegen::Promise* start;
   int bottom;
   int top;
   unsigned index;
@@ -4146,7 +4151,7 @@ compile(MyThread* t, Frame* initialFrame, unsigned initialIp,
   };
 
   Frame* frame = initialFrame;
-  Compiler* c = frame->c;
+  avian::codegen::Compiler* c = frame->c;
   Context* context = frame->context;
   unsigned stackSize = codeMaxStack(t, methodCode(t, context->method));
   Stack stack(t);
@@ -5673,7 +5678,7 @@ compile(MyThread* t, Frame* initialFrame, unsigned initialIp,
         Compiler::Operand* default_ = frame->addressOperand
           (frame->addressPromise(c->machineIp(defaultIp)));
 
-        Promise* start = 0;
+        avian::codegen::Promise* start = 0;
         uint32_t* ipTable = static_cast<uint32_t*>
           (stack.push(sizeof(uint32_t) * pairCount));
         for (int32_t i = 0; i < pairCount; ++i) {
@@ -5684,7 +5689,7 @@ compile(MyThread* t, Frame* initialFrame, unsigned initialIp,
 
           ipTable[i] = newIp;
 
-          Promise* p = c->poolAppend(key);
+          avian::codegen::Promise* p = c->poolAppend(key);
           if (i == 0) {
             start = p;
           }
@@ -6199,7 +6204,7 @@ compile(MyThread* t, Frame* initialFrame, unsigned initialIp,
       int32_t bottom = codeReadInt32(t, code, ip);
       int32_t top = codeReadInt32(t, code, ip);
         
-      Promise* start = 0;
+      avian::codegen::Promise* start = 0;
       unsigned count = top - bottom + 1;
       uint32_t* ipTable = static_cast<uint32_t*>
         (stack.push(sizeof(uint32_t) * count));
@@ -6210,7 +6215,7 @@ compile(MyThread* t, Frame* initialFrame, unsigned initialIp,
 
         ipTable[i] = newIp;
 
-        Promise* p = c->poolAppendPromise
+        avian::codegen::Promise* p = c->poolAppendPromise
           (frame->addressPromise(c->machineIp(newIp)));
         if (i == 0) {
           start = p;
@@ -6489,7 +6494,7 @@ truncateLineNumberTable(Thread* t, object table, unsigned length)
 object
 translateExceptionHandlerTable(MyThread* t, Context* context, intptr_t start)
 {
-  Compiler* c = context->compiler;
+  avian::codegen::Compiler* c = context->compiler;
 
   object oldTable = codeExceptionHandlerTable
     (t, methodCode(t, context->method));
@@ -6931,11 +6936,11 @@ unsigned
 simpleFrameMapTableSize(MyThread* t, object method, object map)
 {
   int size = frameMapSizeInBits(t, method);
-  return ceiling(intArrayLength(t, map) * size, 32 + size);
+  return ceilingDivide(intArrayLength(t, map) * size, 32 + size);
 }
 
 uint8_t*
-finish(MyThread* t, FixedAllocator* allocator, Assembler* a, const char* name,
+finish(MyThread* t, FixedAllocator* allocator, avian::codegen::Assembler* a, const char* name,
        unsigned length)
 {
   uint8_t* start = static_cast<uint8_t*>
@@ -6968,7 +6973,7 @@ copyFrameMap(int32_t* dst, uintptr_t* src, unsigned mapSizeInBits,
 {
   if (DebugFrameMaps) {
     fprintf(stderr, "  orig roots at ip %3d: ", p->ip);
-    printSet(src, ceiling(mapSizeInBits, BitsPerWord));
+    printSet(src, ceilingDivide(mapSizeInBits, BitsPerWord));
     print(subroutinePath);
     fprintf(stderr, "\n");
 
@@ -7071,7 +7076,7 @@ makeGeneralFrameMapTable(MyThread* t, Context* context, uint8_t* start,
   unsigned indexOffset = sizeof(FrameMapTableHeader);
   unsigned mapsOffset = indexOffset
     + (elementCount * sizeof(FrameMapTableIndexElement));
-  unsigned pathsOffset = mapsOffset + (ceiling(mapCount * mapSize, 32) * 4);
+  unsigned pathsOffset = mapsOffset + (ceilingDivide(mapCount * mapSize, 32) * 4);
 
   object table = makeByteArray(t, pathsOffset + pathFootprint);
   
@@ -7146,7 +7151,7 @@ makeGeneralFrameMapTable(MyThread* t, Context* context, uint8_t* start,
             sizeof(SubroutineTrace*), compareSubroutineTracePointers);
 
       for (unsigned i = 0; i < p->subroutineTraceCount; ++i) {
-        assert(t, mapsOffset + ceiling(nextMapIndex + mapSize, 32) * 4
+        assert(t, mapsOffset + ceilingDivide(nextMapIndex + mapSize, 32) * 4
                <= pathsOffset);
 
         copyFrameMap(reinterpret_cast<int32_t*>(body + mapsOffset),
@@ -7158,7 +7163,7 @@ makeGeneralFrameMapTable(MyThread* t, Context* context, uint8_t* start,
     } else {
       pathIndex = 0;
 
-      assert(t, mapsOffset + ceiling(nextMapIndex + mapSize, 32) * 4
+      assert(t, mapsOffset + ceilingDivide(nextMapIndex + mapSize, 32) * 4
              <= pathsOffset);
 
       copyFrameMap(reinterpret_cast<int32_t*>(body + mapsOffset), p->map,
@@ -7188,7 +7193,7 @@ makeSimpleFrameMapTable(MyThread* t, Context* context, uint8_t* start,
 {
   unsigned mapSize = frameMapSizeInBits(t, context->method);
   object table = makeIntArray
-    (t, elementCount + ceiling(elementCount * mapSize, 32));
+    (t, elementCount + ceilingDivide(elementCount * mapSize, 32));
 
   assert(t, intArrayLength(t, table) == elementCount
          + simpleFrameMapTableSize(t, context->method, table));
@@ -7199,7 +7204,7 @@ makeSimpleFrameMapTable(MyThread* t, Context* context, uint8_t* start,
     intArrayBody(t, table, i) = static_cast<intptr_t>(p->address->value())
       - reinterpret_cast<intptr_t>(start);
 
-    assert(t, elementCount + ceiling((i + 1) * mapSize, 32)
+    assert(t, elementCount + ceilingDivide((i + 1) * mapSize, 32)
            <= intArrayLength(t, table));
 
     if (mapSize) {
@@ -7214,7 +7219,7 @@ makeSimpleFrameMapTable(MyThread* t, Context* context, uint8_t* start,
 void
 finish(MyThread* t, FixedAllocator* allocator, Context* context)
 {
-  Compiler* c = context->compiler;
+  avian::codegen::Compiler* c = context->compiler;
 
   if (false) {
     logCompile
@@ -7291,11 +7296,11 @@ finish(MyThread* t, FixedAllocator* allocator, Context* context)
 
   BootContext* bc = context->bootContext;
   if (bc) {
-    for (DelayedPromise* p = bc->addresses;
+    for (avian::codegen::DelayedPromise* p = bc->addresses;
          p != bc->addressSentinal;
          p = p->next)
     {
-      p->basis = new(bc->zone) ResolvedPromise(p->basis->value());
+      p->basis = new(bc->zone) avian::codegen::ResolvedPromise(p->basis->value());
     }
   }
 
@@ -7400,7 +7405,7 @@ finish(MyThread* t, FixedAllocator* allocator, Context* context)
 void
 compile(MyThread* t, Context* context)
 {
-  Compiler* c = context->compiler;
+  avian::codegen::Compiler* c = context->compiler;
 
 //   fprintf(stderr, "compiling %s.%s%s\n",
 //           &byteArrayBody(t, className(t, methodClass(t, context->method)), 0),
@@ -7534,7 +7539,7 @@ compile(MyThread* t, Context* context)
 }
 
 void
-updateCall(MyThread* t, UnaryOperation op, void* returnAddress, void* target)
+updateCall(MyThread* t, avian::codegen::lir::UnaryOperation op, void* returnAddress, void* target)
 {
   t->arch->updateCall(op, returnAddress, target);
 }
@@ -7827,7 +7832,7 @@ invokeNative(MyThread* t)
 
   uintptr_t* stack = static_cast<uintptr_t*>(t->stack);
 
-  if (TailCalls
+  if (avian::codegen::TailCalls
       and t->arch->argumentFootprint(parameterFootprint)
       > t->arch->stackAlignmentInWords())
   {
@@ -8502,11 +8507,11 @@ class ArgumentList {
       
       case 'J':
       case 'D':
-        addLong(cast<int64_t>(objectArrayBody(t, arguments, index++), 8));
+        addLong(fieldAtOffset<int64_t>(objectArrayBody(t, arguments, index++), 8));
         break;
 
       default:
-        addInt(cast<int32_t>(objectArrayBody(t, arguments, index++),
+        addInt(fieldAtOffset<int32_t>(objectArrayBody(t, arguments, index++),
                              BytesPerWord));
         break;
       }
@@ -9264,7 +9269,7 @@ class MyProcessor: public Processor {
   }
 
   virtual void compileMethod(Thread* vmt, Zone* zone, object* constants,
-                             object* calls, DelayedPromise** addresses,
+                             object* calls, avian::codegen::DelayedPromise** addresses,
                              object method, OffsetResolver* resolver)
   {
     MyThread* t = static_cast<MyThread*>(vmt);
@@ -9506,17 +9511,17 @@ compileMethod2(MyThread* t, void* ip)
   }
 
   if (updateCaller) {
-    UnaryOperation op;
+    avian::codegen::lir::UnaryOperation op;
     if (callNodeFlags(t, node) & TraceElement::LongCall) {
       if (callNodeFlags(t, node) & TraceElement::TailCall) {
-        op = AlignedLongJump;
+        op = avian::codegen::lir::AlignedLongJump;
       } else {
-        op = AlignedLongCall;
+        op = avian::codegen::lir::AlignedLongCall;
       }
     } else if (callNodeFlags(t, node) & TraceElement::TailCall) {
-      op = AlignedJump;
+      op = avian::codegen::lir::AlignedJump;
     } else {
-      op = AlignedCall;
+      op = avian::codegen::lir::AlignedCall;
     }
 
     updateCall(t, op, updateIp, reinterpret_cast<void*>(address));
@@ -9938,7 +9943,7 @@ boot(MyThread* t, BootImage* image, uint8_t* code)
   uintptr_t* heapMap = reinterpret_cast<uintptr_t*>
     (padWord(reinterpret_cast<uintptr_t>(callTable + (image->callCount * 2))));
 
-  unsigned heapMapSizeInWords = ceiling
+  unsigned heapMapSizeInWords = ceilingDivide
     (heapMapSize(image->heapSize), BytesPerWord);
   uintptr_t* heap = heapMap + heapMapSizeInWords;
 
@@ -9947,7 +9952,7 @@ boot(MyThread* t, BootImage* image, uint8_t* code)
   t->heapImage = p->heapImage = heap;
 
   // fprintf(stderr, "heap from %p to %p\n",
-  //         heap, heap + ceiling(image->heapSize, BytesPerWord));
+  //         heap, heap + ceilingDivide(image->heapSize, BytesPerWord));
 
   t->codeImage = p->codeImage = code;
   p->codeImageSize = image->codeSize;
@@ -10046,27 +10051,34 @@ thunkToThunk(const MyProcessor::Thunk& thunk, uint8_t* base)
     (thunk.start - base, thunk.frameSavedOffset, thunk.length);
 }
 
+using avian::codegen::OperandInfo;
+namespace lir = avian::codegen::lir;
+
 void
 compileCall(MyThread* t, Context* c, ThunkIndex index, bool call = true)
 {
-  Assembler* a = c->assembler;
+  avian::codegen::Assembler* a = c->assembler;
 
   if (processor(t)->bootImage) {
-    Assembler::Memory table(t->arch->thread(), TARGET_THREAD_THUNKTABLE);
-    Assembler::Register scratch(t->arch->scratch());
-    a->apply(Move, TargetBytesPerWord, MemoryOperand, &table,
-             TargetBytesPerWord, RegisterOperand, &scratch);
-    Assembler::Memory proc(scratch.low, index * TargetBytesPerWord);
-    a->apply(Move, TargetBytesPerWord, MemoryOperand, &proc,
-             TargetBytesPerWord, RegisterOperand, &scratch);
+    lir::Memory table(t->arch->thread(), TARGET_THREAD_THUNKTABLE);
+    lir::Register scratch(t->arch->scratch());
+    a->apply(lir::Move,
+             OperandInfo(TargetBytesPerWord, lir::MemoryOperand, &table),
+             OperandInfo(TargetBytesPerWord, lir::RegisterOperand, &scratch));
+    lir::Memory proc(scratch.low, index * TargetBytesPerWord);
+    a->apply(lir::Move,
+             OperandInfo(TargetBytesPerWord, lir::MemoryOperand, &proc),
+             OperandInfo(TargetBytesPerWord, lir::RegisterOperand, &scratch));
     a->apply
-      (call ? Call : Jump, TargetBytesPerWord, RegisterOperand, &scratch);
+      (call ? lir::Call : lir::Jump,
+       OperandInfo(TargetBytesPerWord, lir::RegisterOperand, &scratch));
   } else {
-    Assembler::Constant proc
-      (new(&c->zone) ResolvedPromise(reinterpret_cast<intptr_t>(t->thunkTable[index])));
+    lir::Constant proc
+      (new(&c->zone) avian::codegen::ResolvedPromise(reinterpret_cast<intptr_t>(t->thunkTable[index])));
 
     a->apply
-      (call ? LongCall : LongJump, TargetBytesPerWord, ConstantOperand, &proc);
+      (call ? lir::LongCall : lir::LongJump,
+       OperandInfo(TargetBytesPerWord, lir::ConstantOperand, &proc));
   }
 }
 
@@ -10076,21 +10088,22 @@ compileThunks(MyThread* t, FixedAllocator* allocator)
   MyProcessor* p = processor(t);
 
   { Context context(t);
-    Assembler* a = context.assembler;
+    avian::codegen::Assembler* a = context.assembler;
     
     a->saveFrame(TARGET_THREAD_STACK, TARGET_THREAD_IP);
 
     p->thunks.default_.frameSavedOffset = a->length();
 
-    Assembler::Register thread(t->arch->thread());
-    a->pushFrame(1, TargetBytesPerWord, RegisterOperand, &thread);
+    lir::Register thread(t->arch->thread());
+    a->pushFrame(1, TargetBytesPerWord, lir::RegisterOperand, &thread);
   
     compileCall(t, &context, compileMethodIndex);
 
     a->popFrame(t->arch->alignFrameSize(1));
 
-    Assembler::Register result(t->arch->returnLow());
-    a->apply(Jump, TargetBytesPerWord, RegisterOperand, &result);
+    lir::Register result(t->arch->returnLow());
+    a->apply(lir::Jump,
+             OperandInfo(TargetBytesPerWord, lir::RegisterOperand, &result));
 
     p->thunks.default_.length = a->endBlock(false)->resolve(0, 0);
 
@@ -10099,43 +10112,47 @@ compileThunks(MyThread* t, FixedAllocator* allocator)
   }
 
   { Context context(t);
-    Assembler* a = context.assembler;
+    avian::codegen::Assembler* a = context.assembler;
     
-    Assembler::Register class_(t->arch->virtualCallTarget());
-    Assembler::Memory virtualCallTargetSrc
+    lir::Register class_(t->arch->virtualCallTarget());
+    lir::Memory virtualCallTargetSrc
       (t->arch->stack(),
        (t->arch->frameFooterSize() + t->arch->frameReturnAddressSize())
        * TargetBytesPerWord);
 
-    a->apply(Move, TargetBytesPerWord, MemoryOperand, &virtualCallTargetSrc,
-             TargetBytesPerWord, RegisterOperand, &class_);
+    a->apply(lir::Move,
+             OperandInfo(TargetBytesPerWord, lir::MemoryOperand, &virtualCallTargetSrc),
+             OperandInfo(TargetBytesPerWord, lir::RegisterOperand, &class_));
 
-    Assembler::Memory virtualCallTargetDst
+    lir::Memory virtualCallTargetDst
       (t->arch->thread(), TARGET_THREAD_VIRTUALCALLTARGET);
 
-    a->apply(Move, TargetBytesPerWord, RegisterOperand, &class_,
-             TargetBytesPerWord, MemoryOperand, &virtualCallTargetDst);
+    a->apply(lir::Move,
+             OperandInfo(TargetBytesPerWord, lir::RegisterOperand, &class_),
+             OperandInfo(TargetBytesPerWord, lir::MemoryOperand, &virtualCallTargetDst));
 
-    Assembler::Register index(t->arch->virtualCallIndex());
-    Assembler::Memory virtualCallIndex
+    lir::Register index(t->arch->virtualCallIndex());
+    lir::Memory virtualCallIndex
       (t->arch->thread(), TARGET_THREAD_VIRTUALCALLINDEX);
 
-    a->apply(Move, TargetBytesPerWord, RegisterOperand, &index,
-             TargetBytesPerWord, MemoryOperand, &virtualCallIndex);
+    a->apply(lir::Move,
+             OperandInfo(TargetBytesPerWord, lir::RegisterOperand, &index),
+             OperandInfo(TargetBytesPerWord, lir::MemoryOperand, &virtualCallIndex));
     
     a->saveFrame(TARGET_THREAD_STACK, TARGET_THREAD_IP);
 
     p->thunks.defaultVirtual.frameSavedOffset = a->length();
 
-    Assembler::Register thread(t->arch->thread());
-    a->pushFrame(1, TargetBytesPerWord, RegisterOperand, &thread);
+    lir::Register thread(t->arch->thread());
+    a->pushFrame(1, TargetBytesPerWord, lir::RegisterOperand, &thread);
 
     compileCall(t, &context, compileVirtualMethodIndex);
   
     a->popFrame(t->arch->alignFrameSize(1));
 
-    Assembler::Register result(t->arch->returnLow());
-    a->apply(Jump, TargetBytesPerWord, RegisterOperand, &result);
+    lir::Register result(t->arch->returnLow());
+    a->apply(lir::Jump,
+             OperandInfo(TargetBytesPerWord, lir::RegisterOperand, &result));
 
     p->thunks.defaultVirtual.length = a->endBlock(false)->resolve(0, 0);
 
@@ -10144,14 +10161,14 @@ compileThunks(MyThread* t, FixedAllocator* allocator)
   }
 
   { Context context(t);
-    Assembler* a = context.assembler;
+    avian::codegen::Assembler* a = context.assembler;
 
     a->saveFrame(TARGET_THREAD_STACK, TARGET_THREAD_IP);
 
     p->thunks.native.frameSavedOffset = a->length();
 
-    Assembler::Register thread(t->arch->thread());
-    a->pushFrame(1, TargetBytesPerWord, RegisterOperand, &thread);
+    lir::Register thread(t->arch->thread());
+    a->pushFrame(1, TargetBytesPerWord, lir::RegisterOperand, &thread);
 
     compileCall(t, &context, invokeNativeIndex);
   
@@ -10165,14 +10182,14 @@ compileThunks(MyThread* t, FixedAllocator* allocator)
   }
 
   { Context context(t);
-    Assembler* a = context.assembler;
+    avian::codegen::Assembler* a = context.assembler;
 
     a->saveFrame(TARGET_THREAD_STACK, TARGET_THREAD_IP);
 
     p->thunks.aioob.frameSavedOffset = a->length();
 
-    Assembler::Register thread(t->arch->thread());
-    a->pushFrame(1, TargetBytesPerWord, RegisterOperand, &thread);
+    lir::Register thread(t->arch->thread());
+    a->pushFrame(1, TargetBytesPerWord, lir::RegisterOperand, &thread);
 
     compileCall(t, &context, throwArrayIndexOutOfBoundsIndex);
 
@@ -10183,14 +10200,14 @@ compileThunks(MyThread* t, FixedAllocator* allocator)
   }
 
   { Context context(t);
-    Assembler* a = context.assembler;
+    avian::codegen::Assembler* a = context.assembler;
       
     a->saveFrame(TARGET_THREAD_STACK, TARGET_THREAD_IP);
 
     p->thunks.stackOverflow.frameSavedOffset = a->length();
 
-    Assembler::Register thread(t->arch->thread());
-    a->pushFrame(1, TargetBytesPerWord, RegisterOperand, &thread);
+    lir::Register thread(t->arch->thread());
+    a->pushFrame(1, TargetBytesPerWord, lir::RegisterOperand, &thread);
 
     compileCall(t, &context, throwStackOverflowIndex);
 
@@ -10201,7 +10218,7 @@ compileThunks(MyThread* t, FixedAllocator* allocator)
   }
 
   { { Context context(t);
-      Assembler* a = context.assembler;
+      avian::codegen::Assembler* a = context.assembler;
 
       a->saveFrame(TARGET_THREAD_STACK, TARGET_THREAD_IP);
 
@@ -10220,7 +10237,7 @@ compileThunks(MyThread* t, FixedAllocator* allocator)
 
 #define THUNK(s) {                                                      \
       Context context(t);                                               \
-      Assembler* a = context.assembler;                                 \
+      avian::codegen::Assembler* a = context.assembler;                                 \
                                                                         \
       a->saveFrame(TARGET_THREAD_STACK, TARGET_THREAD_IP);              \
                                                                         \
@@ -10318,17 +10335,19 @@ uintptr_t
 compileVirtualThunk(MyThread* t, unsigned index, unsigned* size)
 {
   Context context(t);
-  Assembler* a = context.assembler;
+  avian::codegen::Assembler* a = context.assembler;
 
-  ResolvedPromise indexPromise(index);
-  Assembler::Constant indexConstant(&indexPromise);
-  Assembler::Register indexRegister(t->arch->virtualCallIndex());
-  a->apply(Move, TargetBytesPerWord, ConstantOperand, &indexConstant,
-           TargetBytesPerWord, RegisterOperand, &indexRegister);
+  avian::codegen::ResolvedPromise indexPromise(index);
+  lir::Constant indexConstant(&indexPromise);
+  lir::Register indexRegister(t->arch->virtualCallIndex());
+  a->apply(lir::Move,
+           OperandInfo(TargetBytesPerWord, lir::ConstantOperand, &indexConstant),
+           OperandInfo(TargetBytesPerWord, lir::RegisterOperand, &indexRegister));
   
-  ResolvedPromise defaultVirtualThunkPromise(defaultVirtualThunk(t));
-  Assembler::Constant thunk(&defaultVirtualThunkPromise);
-  a->apply(Jump, TargetBytesPerWord, ConstantOperand, &thunk);
+  avian::codegen::ResolvedPromise defaultVirtualThunkPromise(defaultVirtualThunk(t));
+  lir::Constant thunk(&defaultVirtualThunkPromise);
+  a->apply(lir::Jump,
+           OperandInfo(TargetBytesPerWord, lir::ConstantOperand, &thunk));
 
   *size = a->endBlock(false)->resolve(0, 0);
 

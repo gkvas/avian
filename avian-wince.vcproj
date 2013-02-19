@@ -232,10 +232,6 @@
 				</FileConfiguration>
 			</File>
 			<File
-				RelativePath=".\src\arm.cpp"
-				>
-			</File>
-			<File
 				RelativePath=".\src\boot.cpp"
 				>
 			</File>
@@ -265,15 +261,7 @@
 				>
 			</File>
 			<File
-				RelativePath=".\src\compiler.cpp"
-				>
-			</File>
-			<File
 				RelativePath=".\src\finder.cpp"
-				>
-			</File>
-			<File
-				RelativePath=".\src\heap.cpp"
 				>
 			</File>
 			<File
@@ -300,6 +288,82 @@
 				RelativePath=".\src\windows.cpp"
 				>
 			</File>
+			<Filter
+				Name="codegen"
+				>
+				<File
+					RelativePath=".\src\codegen\compiler.cpp"
+					>
+				</File>
+				<File
+					RelativePath=".\src\codegen\registers.cpp"
+					>
+				</File>
+				<File
+					RelativePath=".\src\codegen\targets.cpp"
+					>
+				</File>
+				<Filter
+					Name="compiler"
+					>
+					<File
+						RelativePath=".\src\codegen\compiler\context.cpp"
+						>
+					</File>
+					<File
+						RelativePath=".\src\codegen\compiler\event.cpp"
+						>
+					</File>
+					<File
+						RelativePath=".\src\codegen\compiler\frame.cpp"
+						>
+					</File>
+					<File
+						RelativePath=".\src\codegen\compiler\ir.cpp"
+						>
+					</File>
+					<File
+						RelativePath=".\src\codegen\compiler\promise.cpp"
+						>
+					</File>
+					<File
+						RelativePath=".\src\codegen\compiler\read.cpp"
+						>
+					</File>
+					<File
+						RelativePath=".\src\codegen\compiler\regalloc.cpp"
+						>
+					</File>
+					<File
+						RelativePath=".\src\codegen\compiler\resource.cpp"
+						>
+					</File>
+					<File
+						RelativePath=".\src\codegen\compiler\site.cpp"
+						>
+					</File>
+					<File
+						RelativePath=".\src\codegen\compiler\value.cpp"
+						>
+					</File>
+				</Filter>
+				<Filter
+					Name="arm"
+					>
+					<File
+						RelativePath=".\src\codegen\arm\assembler.cpp"
+						>
+					</File>
+				</Filter>
+			</Filter>
+			<Filter
+				Name="heap"
+				>
+				<File
+					RelativePath=".\src\heap\heap.cpp"
+					>
+				</File>
+			</Filter>
 		</Filter>
 		<Filter
 			Name="Resource Files"

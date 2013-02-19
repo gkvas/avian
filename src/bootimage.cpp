@@ -8,13 +8,14 @@
    There is NO WARRANTY for this software.  See license.txt for
    details. */
 
-#include "heap.h"
+#include "heap/heap.h"
 #include "heapwalk.h"
 #include "common.h"
 #include "machine.h"
 #include "util.h"
 #include "stream.h"
-#include "assembler.h"
+#include "codegen/assembler.h"
+#include "codegen/promise.h"
 #include "target.h"
 #include "binaryToObject/tools.h"
 #include "lzma.h"
@@ -25,13 +26,14 @@ extern "C" void __cxa_pure_virtual(void) { abort(); }
 
 using namespace vm;
 using namespace avian::tools;
+using namespace avian::codegen;
 
 namespace {
 
 const unsigned HeapCapacity = 512 * 1024 * 1024;
 
 const unsigned TargetFixieSizeInBytes = 8 + (TargetBytesPerWord * 2);
-const unsigned TargetFixieSizeInWords = ceiling
+const unsigned TargetFixieSizeInWords = ceilingDivide
   (TargetFixieSizeInBytes, TargetBytesPerWord);
 const unsigned TargetFixieAge = 0;
 const unsigned TargetFixieFlags = 2;
@@ -326,7 +328,7 @@ makeCodeImage(Thread* t, Zone* zone, BootImage* image, uint8_t* code,
           Client(Thread* t): t(t) { }
 
           virtual void NO_RETURN handleError() {
-            vm::abort(t);
+            abort(t);
           }
 
          private:
@@ -542,11 +544,11 @@ makeCodeImage(Thread* t, Zone* zone, BootImage* image, uint8_t* code,
         if (hashMapFind(t, typeMaps, c, objectHash, objectEqual) == 0) {
           object array = makeByteArray
             (t, TypeMap::sizeInBytes
-             (ceiling(classFixedSize(t, c), BytesPerWord), memberIndex));
+             (ceilingDivide(classFixedSize(t, c), BytesPerWord), memberIndex));
 
           TypeMap* map = new (&byteArrayBody(t, array, 0)) TypeMap
-            (ceiling(classFixedSize(t, c), BytesPerWord),
-             ceiling(targetMemberOffset, TargetBytesPerWord), memberIndex);
+            (ceilingDivide(classFixedSize(t, c), BytesPerWord),
+             ceilingDivide(targetMemberOffset, TargetBytesPerWord), memberIndex);
 
           for (unsigned i = 0; i < memberIndex; ++i) {
             Field* f = &memberFields[i];
@@ -569,7 +571,7 @@ makeCodeImage(Thread* t, Zone* zone, BootImage* image, uint8_t* code,
 
           TypeMap* map = new (&byteArrayBody(t, array, 0)) TypeMap
             (singletonCount(t, classStaticTable(t, c)) + 2,
-             ceiling(targetStaticOffset, TargetBytesPerWord), staticIndex,
+             ceilingDivide(targetStaticOffset, TargetBytesPerWord), staticIndex,
              TypeMap::SingletonKind);
 
           for (unsigned i = 0; i < staticIndex; ++i) {
@@ -739,8 +741,8 @@ targetSize(Thread* t, object typeMaps, object p)
 
   if (map->targetArrayElementSizeInBytes) {
     return map->targetFixedSizeInWords
-      + ceiling(map->targetArrayElementSizeInBytes
-                * cast<uintptr_t>
+      + ceilingDivide(map->targetArrayElementSizeInBytes
+                * fieldAtOffset<uintptr_t>
                 (p, (map->buildFixedSizeInWords - 1) * BytesPerWord),
                 TargetBytesPerWord);
   } else {
@@ -787,7 +789,7 @@ targetSize(Thread* t, object typeMaps, object referer, unsigned refererOffset,
   {
     return (TargetBytesPerWord * 2)
       + pad
-      (ceiling
+      (ceilingDivide
        (objectMaskCount
         (classTypeMap(t, typeMaps, referer)), 32) * 4, TargetBytesPerWord);
   } else {
@@ -888,7 +890,7 @@ nonObjectsEqual(TypeMap* map, uint8_t* src, uint8_t* dst)
 
   if (map->targetArrayElementSizeInBytes) {
     unsigned fixedSize = map->buildFixedSizeInWords * BytesPerWord;
-    unsigned count = cast<uintptr_t>(src, fixedSize - BytesPerWord);
+    unsigned count = fieldAtOffset<uintptr_t>(src, fixedSize - BytesPerWord);
 
     for (unsigned i = 0; i < count; ++i) {
       if (not nonObjectsEqual
@@ -919,7 +921,7 @@ copy(Thread* t, object typeMaps, object p, uint8_t* dst)
 
   if (map->targetArrayElementSizeInBytes) {
     unsigned fixedSize = map->buildFixedSizeInWords * BytesPerWord;
-    unsigned count = cast<uintptr_t>(p, fixedSize - BytesPerWord);
+    unsigned count = fieldAtOffset<uintptr_t>(p, fixedSize - BytesPerWord);
 
     for (unsigned i = 0; i < count; ++i) {
       copy(t, src + fixedSize + (i * map->buildArrayElementSizeInBytes),
@@ -1069,7 +1071,7 @@ copy(Thread* t, object typeMaps, object referer, unsigned refererOffset,
 
     memset(dst, 0, TargetBytesPerWord);
 
-    unsigned length = ceiling(objectMaskCount(map), 32);
+    unsigned length = ceilingDivide(objectMaskCount(map), 32);
 
     target_uintptr_t targetLength = targetVW(length);
 
@@ -1164,7 +1166,7 @@ makeHeapImage(Thread* t, BootImage* image, target_uintptr_t* heap,
 
           target_uintptr_t* dst = heap + position + TargetFixieSizeInWords;
 
-          unsigned maskSize = ceiling(size, TargetBitsPerWord);
+          unsigned maskSize = ceilingDivide(size, TargetBitsPerWord);
 
           unsigned total = TargetFixieSizeInWords + size + maskSize;
 
@@ -1440,11 +1442,11 @@ writeBootImage2(Thread* t, OutputStream* bootimageOutput, OutputStream* codeOutp
 
       object array = makeByteArray
         (t, TypeMap::sizeInBytes
-         (ceiling(buildOffset, BytesPerWord), fixedFieldCount));
+         (ceilingDivide(buildOffset, BytesPerWord), fixedFieldCount));
 
       TypeMap* map = new (&byteArrayBody(t, array, 0)) TypeMap
-        (ceiling(buildOffset, BytesPerWord),
-         ceiling(targetOffset, TargetBytesPerWord),
+        (ceilingDivide(buildOffset, BytesPerWord),
+         ceilingDivide(targetOffset, TargetBytesPerWord),
          fixedFieldCount, TypeMap::NormalKind, buildArrayElementSize,
          targetArrayElementSize, arrayElementType);
 

@@ -230,10 +230,6 @@
 				>
 			</File>
 			<File
-				RelativePath=".\src\arm.cpp"
-				>
-			</File>
-			<File
 				RelativePath=".\src\builtin.cpp"
 				>
 			</File>
@@ -243,10 +239,6 @@
 			</File>
 			<File
 				RelativePath=".\src\finder.cpp"
-				>
-			</File>
-			<File
-				RelativePath=".\src\heap.cpp"
 				>
 			</File>
 			<File
@@ -273,6 +265,14 @@
 				RelativePath=".\src\windows.cpp"
 				>
 			</File>
+			<Filter
+				Name="heap"
+				>
+				<File
+					RelativePath=".\src\heap\heap.cpp"
+					>
+				</File>
+			</Filter>
 		</Filter>
 		<Filter
 			Name="Resource Files"

@@ -8,7 +8,7 @@
    There is NO WARRANTY for this software.  See license.txt for
    details. */
 
-#include "heap.h"
+#include "heap/heap.h"
 #include "system.h"
 #include "common.h"
 #include "arch.h"
@@ -55,10 +55,7 @@ class MutexLock {
 
 class Context;
 
-void NO_RETURN abort(Context*);
-#ifndef NDEBUG
-void assert(Context*, bool);
-#endif
+Aborter* getAborter(Context* c);
 
 void* tryAllocate(Context* c, unsigned size);
 void* allocate(Context* c, unsigned size);
@@ -80,13 +77,13 @@ markBitAtomic(uintptr_t* map, unsigned i)
 inline void*
 get(void* o, unsigned offsetInWords)
 {
-  return mask(cast<void*>(o, offsetInWords * BytesPerWord));
+  return maskAlignedPointer(fieldAtOffset<void*>(o, offsetInWords * BytesPerWord));
 }
 
 inline void**
 getp(void* o, unsigned offsetInWords)
 {
-  return &cast<void*>(o, offsetInWords * BytesPerWord);
+  return &fieldAtOffset<void*>(o, offsetInWords * BytesPerWord);
 }
 
 inline void
@@ -223,7 +220,7 @@ class Segment {
                                   unsigned scale, unsigned bitsPerRecord)
     {
       unsigned result
-        = ceiling(ceiling(capacity, scale) * bitsPerRecord, BitsPerWord);
+        = ceilingDivide(ceilingDivide(capacity, scale) * bitsPerRecord, BitsPerWord);
       assert(c, result);
       return result;
     }
@@ -531,7 +528,7 @@ class Fixie {
   }
 
   static unsigned maskSize(unsigned size, bool hasMask) {
-    return hasMask * ceiling(size, BitsPerWord) * BytesPerWord;
+    return hasMask * ceilingDivide(size, BitsPerWord) * BytesPerWord;
   }
 
   static unsigned totalSize(unsigned size, bool hasMask) {
@@ -745,19 +742,9 @@ segment(Context* c, void* p)
   }
 }
 
-inline void NO_RETURN
-abort(Context* c)
-{
-  abort(c->system);
+inline Aborter* getAborter(Context* c) {
+  return c->system;
 }
-
-#ifndef NDEBUG
-inline void
-assert(Context* c, bool v)
-{
-  assert(c->system, v);
-}
-#endif
 
 inline unsigned
 minimumNextGen1Capacity(Context* c)
@@ -862,21 +849,21 @@ inline void*
 follow(Context* c UNUSED, void* o)
 {
   assert(c, wasCollected(c, o));
-  return cast<void*>(o, 0);
+  return fieldAtOffset<void*>(o, 0);
 }
 
 inline void*&
 parent(Context* c UNUSED, void* o)
 {
   assert(c, wasCollected(c, o));
-  return cast<void*>(o, BytesPerWord);
+  return fieldAtOffset<void*>(o, BytesPerWord);
 }
 
 inline uintptr_t*
 bitset(Context* c UNUSED, void* o)
 {
   assert(c, wasCollected(c, o));
-  return &cast<uintptr_t>(o, BytesPerWord * 2);
+  return &fieldAtOffset<uintptr_t>(o, BytesPerWord * 2);
 }
 
 void
@@ -1059,7 +1046,7 @@ copy(Context* c, void* o)
   }
 
   // leave a pointer to the copy in the original
-  cast<void*>(o, 0) = r;
+  fieldAtOffset<void*>(o, 0) = r;
 
   return r;
 }
@@ -1179,12 +1166,12 @@ updateHeapMap(Context* c, void* p, void* target, unsigned offset, void* result)
 void*
 update(Context* c, void** p, void* target, unsigned offset, bool* needsVisit)
 {
-  if (mask(*p) == 0) {
+  if (maskAlignedPointer(*p) == 0) {
     *needsVisit = false;
     return 0;
   }
 
-  void* result = update2(c, mask(*p), needsVisit);
+  void* result = update2(c, maskAlignedPointer(*p), needsVisit);
 
   if (result) {
     updateHeapMap(c, p, target, offset, result);
@@ -1297,20 +1284,20 @@ bitsetNext(Context* c, uintptr_t* p)
 void
 collect(Context* c, void** p, void* target, unsigned offset)
 {
-  void* original = mask(*p);
+  void* original = maskAlignedPointer(*p);
   void* parent_ = 0;
   
   if (Debug) {
     fprintf(stderr, "update %p (%s) at %p (%s)\n",
-            mask(*p), segment(c, *p), p, segment(c, p));
+            maskAlignedPointer(*p), segment(c, *p), p, segment(c, p));
   }
 
   bool needsVisit;
-  local::set(p, update(c, mask(p), target, offset, &needsVisit));
+  local::set(p, update(c, maskAlignedPointer(p), target, offset, &needsVisit));
 
   if (Debug) {
     fprintf(stderr, "  result: %p (%s) (visit? %d)\n",
-            mask(*p), segment(c, *p), needsVisit);
+            maskAlignedPointer(*p), segment(c, *p), needsVisit);
   }
 
   if (not needsVisit) return;
@@ -1966,10 +1953,10 @@ class MyHeap: public Heap {
         bool dirty = false;
         for (unsigned i = 0; i < count; ++i) {
           void** target = static_cast<void**>(p) + offset + i;
-          if (targetNeedsMark(mask(*target))) {
+          if (targetNeedsMark(maskAlignedPointer(*target))) {
             if (DebugFixies) {
               fprintf(stderr, "dirty fixie %p at %d (%p): %p\n",
-                      f, offset, f->body() + offset, mask(*target));
+                      f, offset, f->body() + offset, maskAlignedPointer(*target));
             }
 
             dirty = true;
@@ -1994,7 +1981,7 @@ class MyHeap: public Heap {
 
         for (unsigned i = 0; i < count; ++i) {
           void** target = static_cast<void**>(p) + offset + i;
-          if (targetNeedsMark(mask(*target))) {
+          if (targetNeedsMark(maskAlignedPointer(*target))) {
 #ifdef USE_ATOMIC_OPERATIONS
             map->markAtomic(target);
 #else
@@ -2041,7 +2028,7 @@ class MyHeap: public Heap {
   }
 
   virtual Status status(void* p) {
-    p = mask(p);
+    p = maskAlignedPointer(p);
 
     if (p == 0) {
       return Null;
