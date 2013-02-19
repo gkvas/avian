@@ -225,17 +225,8 @@
 			UniqueIdentifier="{4FC737F1-C7A5-4376-A066-2A32D752A2FF}"
 			>
 			<File
-				RelativePath=".\src\arm.asm"
+				RelativePath=".\src\arm.masm"
 				>
-				<FileConfiguration
-					Name="Debug|Windows Mobile 5.0 Pocket PC SDK (ARMV4I)"
-					>
-					<Tool
-						Name="ARMASM"
-						ObjectFileName="$(IntDir)\$(InputName)-asm.obj"
-						Arch="3"
-					/>
-				</FileConfiguration>
 			</File>
 			<File
 				RelativePath=".\src\builtin.cpp"
@@ -246,17 +237,8 @@
 				>
 			</File>
 			<File
-				RelativePath=".\src\compile-arm.asm"
+				RelativePath=".\src\compile-arm.masm"
 				>
-				<FileConfiguration
-					Name="Debug|Windows Mobile 5.0 Pocket PC SDK (ARMV4I)"
-					>
-					<Tool
-						Name="ARMASM"
-						ObjectFileName="$(IntDir)\$(InputName)-asm.obj"
-						Arch="3"
-					/>
-				</FileConfiguration>
 			</File>
 			<File
 				RelativePath=".\src\compile.cpp"

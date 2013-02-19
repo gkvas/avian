@@ -179,8 +179,8 @@ GLOBAL(vmJump):
 
 #define VMRUN_FRAME_SIZE 80
    
-.globl GLOBAL(vmRun1)
-GLOBAL(vmRun1):
+.globl GLOBAL(vmRun)
+GLOBAL(vmRun):
    // %rcx: function
    // %rdx: arguments
    // %r8 : checkpoint
@@ -360,8 +360,8 @@ GLOBAL(vmJump):
 
 #define VMRUN_FRAME_SIZE 64
    
-.globl GLOBAL(vmRun1)
-GLOBAL(vmRun1):
+.globl GLOBAL(vmRun)
+GLOBAL(vmRun):
    // %rdi: function
    // %rsi: arguments
    // %rdx: checkpoint
@@ -519,8 +519,8 @@ GLOBAL(vmJump):
 
 #define VMRUN_FRAME_SIZE 24
 
-.globl GLOBAL(vmRun1)
-GLOBAL(vmRun1):
+.globl GLOBAL(vmRun)
+GLOBAL(vmRun):
    //  8(%ebp): function
    // 12(%ebp): arguments
    // 16(%ebp): checkpoint

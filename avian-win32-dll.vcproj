@@ -207,35 +207,15 @@
 				>
 			</File>
 			<File
-				RelativePath=".\src\compile-x86.asm"
+				RelativePath=".\src\compile-x86.masm"
 				>
-				<FileConfiguration
-					Name="Debug|Win32"
-					>
-					<Tool
-						Name="MASM"
-						ObjectFileName="$(IntDir)\$(InputName)-asm.obj"
-					/>
-				</FileConfiguration>
 			</File>
 			<File
 				RelativePath=".\src\compile.cpp"
 				>
 			</File>
 			<File
-				RelativePath=".\src\compiler.cpp"
-				>
-			</File>
-			<File
-				RelativePath=".\src\continuations-x86.asm"
-				>
-			</File>
-			<File
 				RelativePath=".\src\finder.cpp"
-				>
-			</File>
-			<File
-				RelativePath=".\src\heap.cpp"
 				>
 			</File>
 			<File
@@ -259,22 +239,85 @@
 				>
 			</File>
 			<File
-				RelativePath=".\src\x86.asm"
+				RelativePath=".\src\x86.masm"
 				>
-				<FileConfiguration
-					Name="Debug|Win32"
+			</File>
+			<Filter
+				Name="codegen"
+				>
+				<File
+					RelativePath=".\src\codegen\compiler.cpp"
 					>
-					<Tool
-						Name="MASM"
-						ObjectFileName="$(IntDir)\$(InputName)-asm.obj"
-						PreprocessorDefinitions="TARGET_BYTES_PER_WORD=4"
-					/>
-				</FileConfiguration>
-			</File>
-			<File
-				RelativePath=".\src\x86.cpp"
+				</File>
+				<File
+					RelativePath=".\src\codegen\registers.cpp"
+					>
+				</File>
+				<File
+					RelativePath=".\src\codegen\targets.cpp"
+					>
+				</File>
+				<Filter
+					Name="compiler"
+					>
+					<File
+						RelativePath=".\src\codegen\compiler\context.cpp"
+						>
+					</File>
+					<File
+						RelativePath=".\src\codegen\compiler\event.cpp"
+						>
+					</File>
+					<File
+						RelativePath=".\src\codegen\compiler\frame.cpp"
+						>
+					</File>
+					<File
+						RelativePath=".\src\codegen\compiler\ir.cpp"
+						>
+					</File>
+					<File
+						RelativePath=".\src\codegen\compiler\promise.cpp"
+						>
+					</File>
+					<File
+						RelativePath=".\src\codegen\compiler\read.cpp"
+						>
+					</File>
+					<File
+						RelativePath=".\src\codegen\compiler\regalloc.cpp"
+						>
+					</File>
+					<File
+						RelativePath=".\src\codegen\compiler\resource.cpp"
+						>
+					</File>
+					<File
+						RelativePath=".\src\codegen\compiler\site.cpp"
+						>
+					</File>
+					<File
+						RelativePath=".\src\codegen\compiler\value.cpp"
+						>
+					</File>
+				</Filter>
+				<Filter
+					Name="x86"
+					>
+					<File
+						RelativePath=".\src\codegen\x86\assembler.cpp"
+						>
+					</File>
+				</Filter>
+			</Filter>
+			<Filter
+				Name="heap"
 				>
-			</File>
+				<File
+					RelativePath=".\src\heap\heap.cpp"
+					>
+				</File>
+			</Filter>
 		</Filter>
 		<Filter
 			Name="Resource Files"

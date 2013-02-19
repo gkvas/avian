@@ -165,17 +165,6 @@ allocate(System* s, unsigned size)
 #define ACQUIRE_MONITOR(t, m) \
   System::MonitorResource MAKE_NAME(monitorResource_) (t, m)
 
-/* Merge
-inline void NO_RETURN
-abort(System* s)
-{
-  s->abort(); // this should not return
-#ifndef WINCE
-  ::abort();
-#else 
-  exit(3);
-#endif
-*/
 inline Aborter* getAborter(System* s) {
   return s;
 }

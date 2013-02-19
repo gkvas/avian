@@ -76,11 +76,7 @@ inline void
 trap()
 {
 #ifdef _MSC_VER
-#ifdef WINCE
-  vmTrap();
-#else
   __debugbreak();
-#endif
 #else
   asm("bkpt");
 #endif
