@@ -30,6 +30,71 @@
 #include "arch.h"
 #include "system.h"
 
+#if defined(WINAPI_FAMILY)
+
+#if !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
+
+#define WaitForSingleObject(hHandle, dwMilliseconds) \
+  WaitForSingleObjectEx((hHandle), (dwMilliseconds), FALSE)
+
+#define CreateEvent(lpEventAttributes, bManualReset, bInitialState, lpName) \
+  CreateEventEx((lpEventAttributes), (lpName), ((bManualReset)?CREATE_EVENT_MANUAL_RESET:0)|((bInitialState)?CREATE_EVENT_INITIAL_SET:0), EVENT_MODIFY_STATE)
+
+#define CreateMutex(lpEventAttributes, bInitialOwner, lpName) \
+  CreateMutexEx((lpEventAttributes), (lpName), (bInitialOwner)?CREATE_MUTEX_INITIAL_OWNER:0, MUTEX_MODIFY_STATE)
+
+#include "thread-emulation.h"
+
+#endif
+
+#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_PHONE)
+// Headers in Windows Phone 8 DevKit contain severe error, so let's define needed functions on our own
+extern "C"
+{
+WINBASEAPI
+_Ret_maybenull_
+HANDLE
+WINAPI
+CreateFileMappingFromApp(
+    _In_ HANDLE hFile,
+    _In_opt_ PSECURITY_ATTRIBUTES SecurityAttributes,
+    _In_ ULONG PageProtection,
+    _In_ ULONG64 MaximumSize,
+    _In_opt_ PCWSTR Name
+    );
+
+WINBASEAPI
+_Ret_maybenull_  __out_data_source(FILE)
+PVOID
+WINAPI
+MapViewOfFileFromApp(
+    _In_ HANDLE hFileMappingObject,
+    _In_ ULONG DesiredAccess,
+    _In_ ULONG64 FileOffset,
+    _In_ SIZE_T NumberOfBytesToMap
+    );
+
+WINBASEAPI
+BOOL
+WINAPI
+UnmapViewOfFile(
+    _In_ LPCVOID lpBaseAddress
+    );
+}
+#endif // WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_PHONE)
+
+#else
+
+#ifndef WINAPI_PARTITION_DESKTOP
+#define WINAPI_PARTITION_DESKTOP 1
+#endif
+
+#ifndef WINAPI_FAMILY_PARTITION
+#define WINAPI_FAMILY_PARTITION(x) (x)
+#endif
+
+#endif
+
 #define ACQUIRE(s, x) MutexResource MAKE_NAME(mutexResource_) (s, x)
 
 using namespace vm;
@@ -53,16 +118,20 @@ class MutexResource {
   HANDLE m;
 };
 
+#if defined(AVIAN_PROCESS_compile)
 const unsigned SegFaultIndex = 0;
 const unsigned DivideByZeroIndex = 1;
 
 const unsigned HandlerCount = 2;
+#endif
 
 class MySystem;
 MySystem* system;
 
+#if defined(AVIAN_PROCESS_compile)
 LONG CALLBACK
 handleException(LPEXCEPTION_POINTERS e);
+#endif
 
 DWORD WINAPI
 run(void* r)
@@ -485,12 +554,12 @@ class MySystem: public System {
       if (handle and handle != INVALID_HANDLE_VALUE) {
         if (findNext) {
           if (FindNextFile(handle, &data)) {
-			// FIXME
+			// FIXME WINCE
             return (const char*) data.cFileName;
           }
         } else {
           findNext = true;
-		  // FIXME
+		  // FIXME WINCE
           return (const char*) data.cFileName;
         }
       }
@@ -565,18 +634,22 @@ class MySystem: public System {
   };
 
   MySystem(const char* crashDumpDirectory):
+#if defined(AVIAN_PROCESS_compile)
     oldHandler(0),
+#endif
     crashDumpDirectory(crashDumpDirectory)
   {
     expect(this, system == 0);
     system = this;
 
+#if defined(AVIAN_PROCESS_compile)
     memset(handlers, 0, sizeof(handlers));
+#endif
 
     mutex = CreateMutex(0, false, 0);
     assert(this, mutex);
   }
-
+#if defined(AVIAN_PROCESS_compile)
   bool findHandler() {
     for (unsigned i = 0; i < HandlerCount; ++i) {
       if (handlers[i]) return true;
@@ -584,6 +657,7 @@ class MySystem: public System {
     return false;
   }
 
+  //TODO: http://msdn.microsoft.com/en-us/library/windowsphone/develop/system.windows.application.unhandledexception(v=vs.105).aspx
   int registerHandler(System::SignalHandler* handler, int index) {
     if (handler) {
       handlers[index] = handler;
@@ -615,7 +689,7 @@ class MySystem: public System {
       return 1;
     }
   }
-
+#endif
   virtual void* tryAllocate(unsigned sizeInBytes) {
     return malloc(sizeInBytes);
   }
@@ -624,6 +698,7 @@ class MySystem: public System {
     if (p) ::free(const_cast<void*>(p));
   }
 
+  #if defined(AVIAN_PROCESS_compile)
   virtual void* tryAllocateExecutable(unsigned sizeInBytes) {
     return VirtualAlloc
       (0, sizeInBytes, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
@@ -633,6 +708,7 @@ class MySystem: public System {
     int r UNUSED = VirtualFree(const_cast<void*>(p), 0, MEM_RELEASE);
     assert(this, r);
   }
+  #endif
 
   virtual bool success(Status s) {
     return s == 0;
@@ -676,6 +752,7 @@ class MySystem: public System {
     return 0;
   }
 
+#if defined(AVIAN_PROCESS_compile)
   virtual Status handleSegFault(SignalHandler* handler) {
     return registerHandler(handler, SegFaultIndex);
   }
@@ -724,6 +801,7 @@ class MySystem: public System {
 
     return (success ? 0 : 1);
   }
+#endif
 
   virtual uint64_t call(void* function, uintptr_t* arguments, uint8_t* types,
                         unsigned count, unsigned size, unsigned returnType)
@@ -733,14 +811,39 @@ class MySystem: public System {
 
   virtual Status map(System::Region** region, const char* name) {
     Status status = 1;
+#if !defined(WINAPI_FAMILY) || WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
     HANDLE file = CreateFile(name, GENERIC_READ, FILE_SHARE_READ, 0,
                              OPEN_EXISTING, 0, 0);
+#else
+    size_t nameLen = strlen(name);
+    wchar_t* wideName = new wchar_t[nameLen + 1];
+    size_t convertedChars = 0;
+    mbstowcs_s(&convertedChars, wideName, nameLen + 1, name, nameLen);
+    HANDLE file = CreateFile2(wideName, GENERIC_READ, FILE_SHARE_READ,
+                             OPEN_EXISTING, 0);
+    delete[] wideName;
+#endif
     if (file != INVALID_HANDLE_VALUE) {
+#if !defined(WINAPI_FAMILY) || WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
       unsigned size = GetFileSize(file, 0);
+#else
+      FILE_STANDARD_INFO info;
+      unsigned size = INVALID_FILE_SIZE;
+      if(GetFileInformationByHandleEx(file,  FileStandardInfo, &info, sizeof(info)))
+        size = info.EndOfFile.QuadPart;
+#endif
       if (size != INVALID_FILE_SIZE) {
+#if !defined(WINAPI_FAMILY) || WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
         HANDLE mapping = CreateFileMapping(file, 0, PAGE_READONLY, 0, size, 0);
+#else
+        HANDLE mapping = CreateFileMappingFromApp(file, 0, PAGE_READONLY, size, 0);
+#endif
         if (mapping) {
+#if !defined(WINAPI_FAMILY) || WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
           void* data = MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, 0);
+#else
+          void* data = MapViewOfFileFromApp(mapping, FILE_MAP_READ, 0, 0);
+#endif
           if (data) {
             *region = new (allocate(this, sizeof(Region)))
               Region(this, static_cast<uint8_t*>(data), size, file, mapping);
@@ -770,7 +873,12 @@ class MySystem: public System {
     memcpy(RUNTIME_ARRAY_BODY(buffer) + length, "\\*", 3);
 
     Directory* d = new (allocate(this, sizeof(Directory))) Directory(this);
+
+#if !defined(WINAPI_FAMILY) || WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
     d->handle = FindFirstFile(RUNTIME_ARRAY_BODY(buffer), &(d->data));
+#else
+    d->handle = FindFirstFileEx(RUNTIME_ARRAY_BODY(buffer), FindExInfoStandard, &(d->data), FindExSearchNameMatch, 0, 0);
+#endif
     if (d->handle == INVALID_HANDLE_VALUE) {
       d->dispose();
     } else {
@@ -811,8 +919,9 @@ class MySystem: public System {
   }
 
   virtual const char* toAbsolutePath(Allocator* allocator, const char* name) {
-    if (strncmp(name, "/", 1) == 0
-        or strncmp(name, "\\", 1) == 0
+#if !defined(WINAPI_FAMILY) || WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
+    if (strncmp(name, "//", 2) == 0
+        or strncmp(name, "\\\\", 2) == 0
         or strncmp(name + 1, ":/", 2) == 0
         or strncmp(name + 1, ":\\", 2) == 0)
     {
@@ -827,6 +936,11 @@ class MySystem: public System {
 #endif      
 	  return append(allocator, buffer, "\\", name);
     }
+#else
+    //TODO:http://lunarfrog.com/blog/2012/05/21/winrt-folders-access/
+    //Windows.ApplicationModel.Package.Current.InstalledLocation
+    return name;
+#endif
   }
 
   virtual Status load(System::Library** lib,
@@ -835,12 +949,26 @@ class MySystem: public System {
     HMODULE handle;
     unsigned nameLength = (name ? strlen(name) : 0);
     if (name) {
+#if !defined(WINAPI_FAMILY) || WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
       handle = LoadLibrary(name);
-    } else {
-#ifndef WINCE // FIXME
-      handle = GetModuleHandle(0);
 #else
+      size_t nameLen = strlen(name);
+      wchar_t* wideName = new wchar_t[nameLen + 1];
+	  size_t convertedChars = 0;
+      mbstowcs_s(&convertedChars, wideName, nameLen + 1, name, nameLen);
+      handle = LoadPackagedLibrary(wideName, 0);
+      delete[] wideName;
+#endif
+    } else {
+#if !defined(WINAPI_FAMILY) || WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
+#ifndef WINCE
+      handle = GetModuleHandle(0);
+#else // FIXME GetModule doesn't work in WinCE, load by name.
 	  handle = LoadLibrary("jvm.dll");
+#endif
+#else
+      // Most of WinRT/WP8 applications can not host native object files inside main executable
+      assert(this, false);
 #endif
     }
  
@@ -889,7 +1017,11 @@ class MySystem: public System {
   }
 
   virtual void yield() {
+#if !defined(WINAPI_FAMILY) || WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
     SwitchToThread();
+#else
+    YieldProcessor();
+#endif
   }
 
   virtual void exit(int code) {
@@ -909,14 +1041,18 @@ class MySystem: public System {
   }
 
   HANDLE mutex;
+#if defined(AVIAN_PROCESS_compile)
   SignalHandler* handlers[HandlerCount];
-#ifndef WINCE
+#ifndef WINCE // Merge
   LPTOP_LEVEL_EXCEPTION_FILTER oldHandler;
 #else
   void* oldHandler;
 #endif
+#endif
   const char* crashDumpDirectory;
 };
+
+#if defined(AVIAN_PROCESS_compile)
 
 #pragma pack(push,4)
 struct MINIDUMP_EXCEPTION_INFORMATION {
@@ -1043,6 +1179,8 @@ handleException(LPEXCEPTION_POINTERS e)
 
   return EXCEPTION_CONTINUE_SEARCH;
 }
+
+#endif
 
 } // namespace
 

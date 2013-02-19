@@ -9,7 +9,7 @@
 			DisplayName="Microsoft ARM assembler"
 			CommandLine="armasm [AllOptions] [AdditionalOptions] [inputs] "
 			Outputs="[$ObjectFileName]"
-			FileExtensions="*.asm"
+			FileExtensions="asm;masm"
 			ExecutionDescription="Assembling..."
 			>
 			<Properties>
