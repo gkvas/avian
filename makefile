@@ -179,7 +179,7 @@ dlltool = dlltool
 vg = nice valgrind --num-callers=32 --db-attach=yes --freelist-vol=100000000
 vg += --leak-check=full --suppressions=valgrind.supp
 db = gdb --args
-javac = "$(JAVA_HOME)/bin/javac"
+javac = "$(JAVA_HOME)/bin/javac" -encoding UTF-8
 javah = "$(JAVA_HOME)/bin/javah"
 jar = "$(JAVA_HOME)/bin/jar"
 strip = strip
@@ -266,6 +266,8 @@ build-ld = $(build-cc)
 
 static = -static
 shared = -shared
+
+rpath = -Wl,-rpath=\$$ORIGIN -Wl,-z,origin
 
 no-error = -Wno-error
 
@@ -433,7 +435,7 @@ ifeq ($(platform),android)
 	lflags = "-L$(sysroot)/usr/lib" $(common-lflags) -llog
 	target-format = elf
 	use-lto = false
-	
+
 	ifeq ($(arch),arm)
 		cflags += -marm -march=$(android-arm-arch) -ftree-vectorize -ffast-math -mfloat-abi=softfp
 	endif
@@ -485,6 +487,7 @@ ifeq ($(platform),darwin)
 	strip-all = -S -x
 	so-suffix = .dylib
 	shared = -dynamiclib
+	rpath =
 
 	sdk-dir = $(developer-dir)/Platforms/iPhoneOS.platform/Developer/SDKs
 
@@ -545,6 +548,7 @@ ifeq ($(platform),windows)
 	so-prefix =
 	so-suffix = .dll
 	exe-suffix = .exe
+	rpath =
 
 	lflags = -L$(lib) $(common-lflags) -lws2_32 -liphlpapi -mconsole
 	bootimage-generator-lflags = -static-libstdc++ -static-libgcc
@@ -641,14 +645,9 @@ ifeq ($(platform),wp8)
 	ms_cl_compiler = wp8
 	use-lto = false
 	supports_avian_executable = false
-	process = compile
 	aot-only = true
-	ifneq ($(process),compile)
-		options := -$(process)
-	endif
-	bootimage = true
-	ifeq ($(bootimage),true)
-		options := $(options)-bootimage
+	ifneq ($(bootimage),true)
+		x := $(error Windows Phone 8 target requires bootimage=true)
 	endif
 	system = windows
 	build-system = windows
@@ -705,12 +704,12 @@ ifeq ($(platform),wp8)
 		-DAVIAN_VERSION=\"$(version)\" -D_JNI_IMPLEMENTATION_ \
 		-DUSE_ATOMIC_OPERATIONS -DAVIAN_JAVA_HOME=\"$(javahome)\" \
 		-DAVIAN_EMBED_PREFIX=\"$(embed-prefix)\" \
-		-I"$(shell $(windows-path) "$(wp8)/zlib/upstream")" \
-		-Fd$(build)/$(name).pdb -I"$(shell $(windows-path) "$(wp8)/include")" -I$(src) -I$(classpath-src) \
+		-I"$(shell $(windows-path) "$(wp8)/zlib/upstream")" -I"$(shell $(windows-path) "$(wp8)/interop/avian-interop-client")" \
+		-I"$(shell $(windows-path) "$(wp8)/include")" -I$(src) -I$(classpath-src) \
 		-I"$(build)" \
 		-I"$(windows-java-home)/include" -I"$(windows-java-home)/include/win32" \
 		-DTARGET_BYTES_PER_WORD=$(pointer-size) \
-		-Gd
+		-Gd -EHsc
 
 	common-lflags = $(classpath-lflags)
 
@@ -738,7 +737,8 @@ ifeq ($(platform),wp8)
 		-MACHINE:$(machine_type) \
 		-LIBPATH:"$(WP80_KIT)\lib\$(w8kit_arch)" -LIBPATH:"$(WP80_SDK)\lib$(vc_arch)" -LIBPATH:"$(WIN8_KIT)\Lib\win8\um\$(w8kit_arch)" \
 		ws2_32.lib \
-		"$(shell $(windows-path) "$(wp8)\lib\$(deps_arch)\$(build-type)\zlib.lib")" "$(shell $(windows-path) "$(wp8)\lib\$(deps_arch)\$(build-type)\ThreadEmulation.lib")"
+		"$(shell $(windows-path) "$(wp8)\lib\$(deps_arch)\$(build-type)\zlib.lib")" "$(shell $(windows-path) "$(wp8)\lib\$(deps_arch)\$(build-type)\ThreadEmulation.lib")" \
+		"$(shell $(windows-path) "$(wp8)\lib\$(deps_arch)\$(build-type)\AvianInteropClient.lib")"
 	lflags += -NXCOMPAT -DYNAMICBASE -SUBSYSTEM:CONSOLE -TLBID:1
 	lflags += -NODEFAULTLIB:"ole32.lib" -NODEFAULTLIB:"kernel32.lib"
 	lflags += PhoneAppModelHost.lib WindowsPhoneCore.lib -WINMD -WINMDFILE:$(subst $(so-suffix),.winmd,$(@))
@@ -1245,8 +1245,18 @@ javadoc:
 		-header "Avian v$(version)" \
 		-bottom "<a href=\"http://oss.readytalk.com/avian/\">http://oss.readytalk.com/avian</a>"
 
+.PHONY: clean-current
+clean-current:
+	@echo "removing $(build)"
+	rm -rf $(build)
+
 .PHONY: clean
 clean:
+	@echo "removing $(build)"
+	rm -rf $(build)
+
+.PHONY: clean-all
+clean-all:
 	@echo "removing build"
 	rm -rf build
 
@@ -1470,7 +1480,8 @@ else
 	$(ranlib) $(@)
 endif
 
-$(bootimage-object) $(codeimage-object): $(bootimage-generator)
+$(bootimage-object) $(codeimage-object): $(bootimage-generator) \
+		$(openjdk-jar-dep)
 	@echo "generating bootimage and codeimage binaries from $(classpath-build) using $(<)"
 	$(<) -cp $(classpath-build) -bootimage $(bootimage-object) -codeimage $(codeimage-object) \
 		-bootimage-symbols $(bootimage-symbols) \
@@ -1568,7 +1579,7 @@ ifdef mt
 	$(mt) -nologo -manifest $(@).manifest -outputresource:"$(@);1"
 endif
 else
-	$(ld) $(driver-dynamic-objects) -L$(build) -ljvm $(lflags) $(no-lto) -o $(@)
+	$(ld) $(driver-dynamic-objects) -L$(build) -ljvm $(lflags) $(no-lto) $(rpath) -o $(@)
 endif
 	$(strip) $(strip-all) $(@)
 

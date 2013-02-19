@@ -220,6 +220,9 @@ typedef intptr_t __attribute__((__may_alias__)) intptr_alias_t;
     type name;                                                          \
   } MAKE_NAME(resource_)(name);
 
+#ifdef _MSC_VER
+#  pragma warning( disable : 4291 )
+#endif
 inline void* operator new(size_t, void* p) throw() { return p; }
 
 namespace vm {
@@ -241,6 +244,10 @@ class RuntimeArray {
 
   ~RuntimeArray() {
     free(body);
+  }
+
+  T& operator[] (const unsigned index) {
+    return body[index];
   }
 
   T* body;

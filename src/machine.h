@@ -2701,7 +2701,7 @@ throw_(Thread* t, object e)
 
   t->exception = e;
 
-  printTrace(t, e);
+  // printTrace(t, e);
 
   popResources(t);
 

@@ -70,29 +70,46 @@
 #  ifndef WINAPI_FAMILY_PARTITION
 #    define WINAPI_FAMILY_PARTITION(x) (x)
 #  endif
+#else
+#  if !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
+
+#    include "avian-interop.h"
+
+#  endif
 #endif // WINAPI_FAMILY
 
 namespace {
 #ifdef PLATFORM_WINDOWS
-  char* getErrorStr(DWORD err){
-    // The poor man's error string, just print the error code 
-    char * errStr = (char*) malloc(9 * sizeof(char));
-    snprintf(errStr, 9, "%d", (int) err);
+
+#if !defined(WINAPI_FAMILY) || WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
+  char* getErrorStr(DWORD err) {
+    LPSTR errorStr = 0;
+    if(!FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, 0, err, LANG_SYSTEM_DEFAULT, (LPSTR)&errorStr, 0, 0))
+    {
+      char* errStr = (char*) malloc(9 * sizeof(char));
+      snprintf(errStr, 9, "%d", (int) err);
+      return errStr;
+    }
+    char* errStr = strdup(errorStr);
+    LocalFree(errorStr);
     return errStr;
-    
-    #pragma message("TODO")
-    // The better way to do this, if I could figure out how to convert LPTSTR to char*
-    //char* errStr;
-    //LPTSTR s;
-    //if(FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
-    //                 FORMAT_MESSAGE_IGNORE_INSERTS, NULL, err, 0, &s, 0, NULL) == 0)
-    //{
-    //  errStr.Format("Unknown error occurred (%08x)", err);
-    //} else {
-    //  errStr = s;
-    //}
-    //return errStr;
   }
+#else
+  char* getErrorStr(DWORD err) {
+    LPSTR errorStr = (LPSTR)malloc(4096); //NOTE: something constant
+    if(!FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, 0, err, LANG_SYSTEM_DEFAULT, errorStr, 0, 0))
+    {
+      free(errorStr);
+
+      char* errStr = (char*) malloc(9 * sizeof(char));
+      snprintf(errStr, 9, "%d", (int) err);
+      return errStr;
+    }
+    char* errStr = strdup(errorStr);
+    free(errorStr);
+    return errStr;
+  }
+#endif
 
 #if !defined(WINAPI_FAMILY) || WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
   void makePipe(JNIEnv* e, HANDLE p[2])
@@ -390,8 +407,20 @@ Locale getLocale() {
 
   return Locale(lang, reg);
 #else
-  #pragma message("TODO: CultureInfo.CurrentCulture")
-  return Locale("en", "US");
+  std::wstring culture = AvianInterop::GetCurrentUICulture();
+  char* cultureName = strdup(std::string(culture.begin(), culture.end()).c_str());
+  char* delimiter = strchr(cultureName, '-');
+  if(!delimiter)
+  {
+    free(cultureName);
+    return Locale("en", "US");
+  }
+  const char* lang = cultureName;
+  const char* reg = delimiter + 1;
+  *delimiter = 0;
+  Locale locale(lang, reg);
+  free(cultureName);
+  return locale;
 #endif
 }
 #else
@@ -596,8 +625,9 @@ Java_java_lang_System_getProperty(JNIEnv* e, jclass, jstring name,
       GetTempPath(MAX_PATH, buffer);
       r = e->NewStringUTF(buffer);
 #  else
-      #pragma message("TODO:http://lunarfrog.com/blog/2012/05/21/winrt-folders-access/ Windows.Storage.ApplicationData.Current.TemporaryFolder")
-      r = 0;
+      // std::wstring tmpDir = AvianInterop::GetTemporaryFolder();
+      // r = e->NewString((const jchar*)tmpDir.c_str(), tmpDir.length());
+	  r = 0; // FIXME WINCE
 #  endif
     } else if (strcmp(chars, "user.dir") == 0) {
 #  if (!defined(WINAPI_FAMILY) || WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)) && !defined(WINCE)
@@ -605,8 +635,9 @@ Java_java_lang_System_getProperty(JNIEnv* e, jclass, jstring name,
       GetCurrentDirectory(MAX_PATH, buffer);
       r = e->NewStringUTF(buffer);
 #  else
-      #pragma message("TODO:http://lunarfrog.com/blog/2012/05/21/winrt-folders-access/ Windows.ApplicationModel.Package.Current.InstalledLocation")
-      r = 0;
+      // std::wstring userDir = AvianInterop::GetInstalledLocation();
+      // r = e->NewString((const jchar*)userDir.c_str(), userDir.length());
+	  r = 0; // FIXME WINCE
 #  endif
     } else if (strcmp(chars, "user.home") == 0) {
 #  ifdef _MSC_VER
@@ -619,8 +650,9 @@ Java_java_lang_System_getProperty(JNIEnv* e, jclass, jstring name,
         r = 0;
       }
 #    else
-      #pragma message("TODO:http://lunarfrog.com/blog/2012/05/21/winrt-folders-access/ Windows.Storage.KnownFolders.DocumentsLibrary")
-      r = 0;
+      // std::wstring userHome = AvianInterop::GetDocumentsLibraryLocation();
+      // r = e->NewString((const jchar*)userHome.c_str(), userHome.length());
+      r = 0; // FIXME WINCE
 #    endif
 #  else
       LPWSTR home = _wgetenv(L"USERPROFILE");
@@ -872,6 +904,11 @@ Java_java_lang_Math_atan(JNIEnv*, jclass, jdouble val)
   return atan(val);
 }
 
+extern "C" JNIEXPORT jdouble JNICALL
+Java_java_lang_Math_atan2(JNIEnv*, jclass, jdouble y, jdouble x)
+{
+  return atan2(y, x);
+}
 
 extern "C" JNIEXPORT jdouble JNICALL
 Java_java_lang_Math_sinh(JNIEnv*, jclass, jdouble val)
@@ -890,7 +927,6 @@ Java_java_lang_Math_tanh(JNIEnv*, jclass, jdouble val)
 {
   return tanh(val);
 }
-
 
 extern "C" JNIEXPORT jdouble JNICALL
 Java_java_lang_Math_sqrt(JNIEnv*, jclass, jdouble val)
