@@ -7,7 +7,4 @@ build
 bin
 /lib
 /distrib
-avian-*
-avian.ncb
-avian.suo
 *.pdb
