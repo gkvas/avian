@@ -29,7 +29,7 @@
 
 #include "arch.h"
 #include "system.h"
-#include "util/runtime-array.h"
+#include <avian/util/runtime-array.h>
 
 #if defined(WINAPI_FAMILY)
 

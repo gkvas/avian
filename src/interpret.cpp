@@ -16,7 +16,7 @@
 #include "process.h"
 #include "arch.h"
 
-#include "util/runtime-array.h"
+#include <avian/util/runtime-array.h>
 
 using namespace vm;
 
@@ -2325,19 +2325,20 @@ interpret3(Thread* t, const int base)
 
     THREAD_RUNTIME_ARRAY(t, int32_t, counts, dimensions);
     for (int i = dimensions - 1; i >= 0; --i) {
-      THREAD_RUNTIME_ARRAY_BODY(counts)[i] = popInt(t);
-      if (UNLIKELY(THREAD_RUNTIME_ARRAY_BODY(counts)[i] < 0)) {
+      RUNTIME_ARRAY_BODY(counts)[i] = popInt(t);
+      if (UNLIKELY(RUNTIME_ARRAY_BODY(counts)[i] < 0)) {
         exception = makeThrowable
-          (t, Machine::NegativeArraySizeExceptionType, "%d", THREAD_RUNTIME_ARRAY_BODY(counts)[i]);
+          (t, Machine::NegativeArraySizeExceptionType, "%d",
+           RUNTIME_ARRAY_BODY(counts)[i]);
         goto throw_;
       }
     }
 
-    object array = makeArray(t, THREAD_RUNTIME_ARRAY_BODY(counts)[0]);
+    object array = makeArray(t, RUNTIME_ARRAY_BODY(counts)[0]);
     setObjectClass(t, array, class_);
     PROTECT(t, array);
 
-    populateMultiArray(t, array, THREAD_RUNTIME_ARRAY_BODY(counts), 0, dimensions);
+    populateMultiArray(t, array, RUNTIME_ARRAY_BODY(counts), 0, dimensions);
 
     pushObject(t, array);
   } goto loop;

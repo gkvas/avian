@@ -13,11 +13,13 @@
 
 #include "common.h"
 #include "system.h"
-#include "heap/heap.h"
+#include <avian/vm/heap/heap.h>
 #include "finder.h"
 #include "processor.h"
 #include "constants.h"
 #include "arch.h"
+
+using namespace avian::util;
 
 #ifdef PLATFORM_WINDOWS
 #  define JNICALL __stdcall
@@ -1604,12 +1606,11 @@ class ThreadRuntimeArray: public Thread::Resource {
 
 #  define THREAD_RUNTIME_ARRAY(thread, type, name, size)        \
   ThreadRuntimeArray<type> name(thread, size);
-#  define THREAD_RUNTIME_ARRAY_BODY(name) name.body
 
 #else // not _MSC_VER
 
-#  define THREAD_RUNTIME_ARRAY(thread, type, name, size) type name[size];
-#  define THREAD_RUNTIME_ARRAY_BODY(name) name
+#  define THREAD_RUNTIME_ARRAY(thread, type, name, size) \
+  type name##_body[size];
 
 #endif // not _MSC_VER
 

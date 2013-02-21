@@ -17,7 +17,8 @@
 #include "arch.h"
 #include "lzma.h"
 
-#include "util/runtime-array.h"
+#include <avian/util/runtime-array.h>
+#include <avian/util/math.h>
 
 #if defined(PLATFORM_WINDOWS)
 #  define WIN32_LEAN_AND_MEAN
@@ -25,6 +26,7 @@
 #endif
 
 using namespace vm;
+using namespace avian::util;
 
 namespace {
 
@@ -4775,13 +4777,13 @@ logTrace(FILE* f, const char* fmt, ...)
 
     RUNTIME_ARRAY(char, buffer, length + 1);
     va_start(a, fmt);
-    vsnprintf(&RUNTIME_ARRAY_BODY(buffer)[0], length + 1, fmt, a);
+    vsnprintf(RUNTIME_ARRAY_BODY(buffer), length + 1, fmt, a);
     va_end(a);
     RUNTIME_ARRAY_BODY(buffer)[length] = 0;
 
-    ::fprintf(f, "%s", &RUNTIME_ARRAY_BODY(buffer)[0]);
+    ::fprintf(f, "%s", RUNTIME_ARRAY_BODY(buffer));
 #ifdef PLATFORM_WINDOWS
-    ::OutputDebugStringA(&RUNTIME_ARRAY_BODY(buffer)[0]);
+    ::OutputDebugStringA(RUNTIME_ARRAY_BODY(buffer));
 #endif
 }
 
