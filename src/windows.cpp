@@ -8,6 +8,8 @@
    There is NO WARRANTY for this software.  See license.txt for
    details. */
 
+
+
 #include "sys/stat.h"
 #include "windows.h"
 #include "sys/timeb.h"
@@ -99,6 +101,7 @@ UnmapViewOfFile(
 #define ACQUIRE(s, x) MutexResource MAKE_NAME(mutexResource_) (s, x)
 
 using namespace vm;
+using namespace avian::util;
 
 namespace {
 
@@ -921,7 +924,7 @@ class MySystem: public System {
   }
 
   virtual const char* toAbsolutePath(Allocator* allocator, const char* name) {
-#if !defined(WINAPI_FAMILY) || WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
+#if (!defined(WINAPI_FAMILY) || WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)) && !defined(WINCE)
     if (strncmp(name, "//", 2) == 0
         or strncmp(name, "\\\\", 2) == 0
         or strncmp(name + 1, ":/", 2) == 0
@@ -929,13 +932,8 @@ class MySystem: public System {
     {
       return copy(allocator, name);
     } else {
-#ifndef WINCE
       TCHAR buffer[MAX_PATH];
-      GetCurrentDirectory(MAX_PATH, buffer);
-#else // WINCE
-      char buffer[MAX_PATH];
-	  GetCurrentDirectory(MAX_PATH, buffer);
-#endif      
+      GetCurrentDirectory(MAX_PATH, buffer);  
 	  return append(allocator, buffer, "\\", name);
     }
 #else

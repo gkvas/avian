@@ -267,7 +267,7 @@ fopen(const char* name, const char* mode)
     return 0;
   }
 #else
-	return fopen(name, mode);
+	return ::fopen(name, mode);
 #endif
 }
 
