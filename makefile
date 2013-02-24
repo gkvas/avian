@@ -943,7 +943,7 @@ vm-depends := $(generated-code) \
 	$(shell find src include -name '*.h' -or -name '*.inc.cpp')
 
 vm-sources = \
-	$(src)/$(system).cpp \
+	$(src)/vm/system/$(system).cpp \
 	$(src)/finder.cpp \
 	$(src)/machine.cpp \
 	$(src)/util.cpp \
@@ -1037,7 +1037,7 @@ ifeq ($(continuations),true)
 	asmflags += -DAVIAN_CONTINUATIONS
 endif
 
-bootimage-generator-sources = $(src)/bootimage.cpp
+bootimage-generator-sources = $(src)/tools/bootimage-generator/main.cpp
 ifneq ($(lzma),)
 	bootimage-generator-sources += $(src)/lzma-encode.cpp
 endif
@@ -1072,8 +1072,8 @@ boot-object = $(build)/boot.o
 
 generator-depends := $(wildcard $(src)/*.h)
 generator-sources = \
-	$(src)/type-generator.cpp \
-	$(src)/$(build-system).cpp \
+	$(src)/tools/type-generator/main.cpp \
+	$(src)/vm/system/$(build-system).cpp \
 	$(src)/finder.cpp
 
 ifneq ($(lzma),)
@@ -1333,7 +1333,7 @@ endif
 $(build)/run-tests.sh: $(test-classes) makefile
 	echo 'cd $$(dirname $$0)' > $(@)
 	echo "sh ./test.sh 2>/dev/null \\" >> $(@)
-	echo "$(shell echo $(library-path) | sed 's|$(build)|\.|g') ./$(name)-unittest${exe-suffix} ./$(name)${exe-suffix} $(mode) \"-Djava.library.path=$$(pwd) -cp test\" \\" >> $(@)
+	echo "$(shell echo $(library-path) | sed 's|$(build)|\.|g') ./$(name)-unittest${exe-suffix} ./$(name)${exe-suffix} $(mode) \"-Djava.library.path=. -cp test\" \\" >> $(@)
 	echo "$(call class-names,$(test-build),$(filter-out $(test-support-classes), $(test-classes))) \\" >> $(@)
 	echo "$(continuation-tests) $(tail-tests)" >> $(@)
 

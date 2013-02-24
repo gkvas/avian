@@ -30,7 +30,7 @@
 #undef min
 
 #include "arch.h"
-#include "system.h"
+#include <avian/vm/system/system.h>
 #include <avian/util/runtime-array.h>
 
 #if defined(WINAPI_FAMILY)
@@ -825,7 +825,7 @@ class MySystem: public System {
     HANDLE file = CreateFileW(RUNTIME_ARRAY_BODY(wideName), GENERIC_READ, FILE_SHARE_READ, 0,
     OPEN_EXISTING, 0, 0);
 #else
-    HANDLE file = CreateFile2(wideName, GENERIC_READ, FILE_SHARE_READ,
+    HANDLE file = CreateFile2(RUNTIME_ARRAY_BODY(wideName), GENERIC_READ, FILE_SHARE_READ,
                              OPEN_EXISTING, 0);
 #endif
     if (file != INVALID_HANDLE_VALUE) {
@@ -955,7 +955,7 @@ class MySystem: public System {
 #if !defined(WINAPI_FAMILY) || WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
       handle = LoadLibraryW(RUNTIME_ARRAY_BODY(wideName));
 #else
-      handle = LoadPackagedLibrary(wideName, 0);
+      handle = LoadPackagedLibrary(RUNTIME_ARRAY_BODY(wideName), 0);
 #endif
     } else {
 #if !defined(WINAPI_FAMILY) || WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)

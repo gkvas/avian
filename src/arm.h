@@ -218,7 +218,7 @@ dynamicCall(void* function, uintptr_t* arguments, uint8_t* argumentTypes,
             ++ stackIndex;
           }
 
-          memcpy(stack + stackIndex, arguments + ai, 8);
+          memcpy(RUNTIME_ARRAY_BODY(stack) + stackIndex, arguments + ai, 8);
           stackIndex += 8 / BytesPerWord;
         }
         ai += 8 / BytesPerWord;
@@ -231,7 +231,7 @@ dynamicCall(void* function, uintptr_t* arguments, uint8_t* argumentTypes,
       } else if (vfpIndex < VfpCount) {
         vfpTable[vfpIndex++] = arguments[ai];
       } else {
-        stack[stackIndex++] = arguments[ai];
+        RUNTIME_ARRAY_BODY(stack)[stackIndex++] = arguments[ai];
       }
       ++ ai;
       break;
@@ -243,7 +243,7 @@ dynamicCall(void* function, uintptr_t* arguments, uint8_t* argumentTypes,
             and gprIndex + Alignment == GprCount)
         {
           gprTable[gprIndex++] = arguments[ai];
-		  RUNTIME_ARRAY_BODY(stack)[stackIndex++] = arguments[ai + 1];
+          RUNTIME_ARRAY_BODY(stack)[stackIndex++] = arguments[ai + 1];
         } else {
           if (gprIndex % Alignment) {
             ++gprIndex;

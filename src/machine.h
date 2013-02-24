@@ -12,7 +12,8 @@
 #define MACHINE_H
 
 #include "common.h"
-#include "system.h"
+#include "java-common.h"
+#include <avian/vm/system/system.h>
 #include <avian/vm/heap/heap.h>
 #include "finder.h"
 #include "processor.h"
@@ -1977,6 +1978,7 @@ addThread(Thread* t, Thread* p)
   ACQUIRE_RAW(t, t->m->stateLock);
 
   assert(t, p->state == Thread::NoState);
+  expect(t, t->state == Thread::ActiveState || t->state == Thread::ExclusiveState);
 
   p->state = Thread::IdleState;
   ++ t->m->threadCount;
