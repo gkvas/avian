@@ -858,7 +858,7 @@ Java_java_io_RandomAccessFile_readBytes(JNIEnv* e, jclass, jlong peer,
   uint8_t* dst = reinterpret_cast<uint8_t*>
     (e->GetPrimitiveArrayCritical(buffer, 0));
 
-  unsigned long bytesRead = ::read(fd, dst + offset, length);
+  long bytesRead = ::read(fd, dst + offset, length);
   e->ReleasePrimitiveArrayCritical(buffer, dst, 0);
   
   if(bytesRead == -1) {

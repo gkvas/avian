@@ -1,5 +1,3 @@
-MAKEFLAGS = -s
-
 name = avian
 version = 0.6
 
@@ -69,6 +67,7 @@ win32 ?= $(root)/win32
 win64 ?= $(root)/win64
 winrt ?= $(root)/winrt
 wp8 ?= $(root)/wp8
+wince ?= $(root)/wince
 
 classpath = avian
 
@@ -716,7 +715,7 @@ ifeq ($(platform),wp8)
 	PATH := $(shell cygpath -u "$(MSVS_ROOT)\Common7\IDE"):$(shell cygpath -u "$(WP80_SDK)\bin$(wp8_arch)"):$(shell cygpath -u "$(WP80_SDK)\bin"):${PATH}
 
 	build-cflags = $(common-cflags) -I$(src) -I$(inc) -mthreads
-	build-lflags = -lz -lpthread
+	build-lflags = $(common-lflags) -lz -lpthread
 
 	cflags = -nologo \
 		-AI"$(WP80_KIT)\Windows Metadata" \
@@ -768,6 +767,177 @@ ifeq ($(platform),wp8)
 	asm-format = masm
 	shared = -dll
 	ar = "$$(cygpath -u "$(WP80_SDK)\bin\lib.exe")"
+	arflags += -nologo
+	ifeq ($(build-platform),cygwin)
+		build-cxx = i686-w64-mingw32-g++
+		build-cc = i686-w64-mingw32-gcc
+		dlltool = i686-w64-mingw32-dlltool
+		ranlib =
+		strip =
+	endif
+	output = -Fo$(1)
+
+	#TODO: -MT or -ZW?
+	cflags_debug = -Od -Zi -MDd
+	cflags_debug_fast = -Od -Zi -MDd
+	cflags_stress = -O0 -g3 -MD
+	cflags_stress_major = -O0 -g3 -MD
+	cflags_fast = -O2 -Zi -MD
+	cflags_small = -O1s -Zi -MD
+	# -GL [whole program optimization] in 'fast' and 'small' breaks compilation for some reason
+
+	ifeq ($(mode),debug)
+		cflags +=
+		lflags +=
+	endif
+	ifeq ($(mode),debug-fast)
+		cflags += -DNDEBUG
+		lflags +=
+	endif
+	ifeq ($(mode),stress_major)
+		cflags +=
+		lflags +=
+	endif
+	ifeq ($(mode),fast)
+		cflags +=
+		lflags +=
+	endif
+	# -LTCG is needed only if -GL is used
+	ifeq ($(mode),fast)
+		cflags += -DNDEBUG
+		lflags += -LTCG
+		arflags +=
+	endif
+	ifeq ($(mode),small)
+		cflags += -DNDEBUG
+		lflags += -LTCG
+		arflags +=
+	endif
+
+	strip = :
+endif
+
+ifeq ($(platform),wince)
+	ifeq ($(shell uname -s | grep -i -c WOW64),1)
+		programFiles = Program Files (x86)
+	else
+		programFiles = Program Files
+	endif
+	ifeq ($(MSVS_ROOT),)
+		# Environment variable MSVS_ROOT not found. It should be something like
+		# "C:\$(programFiles)\Microsoft Visual Studio 11.0"
+		MSVS_ROOT = C:\$(programFiles)\Microsoft Visual Studio 9.0
+	endif
+	ifeq ($(MSVC_ROOT),)
+		# Environment variable MSVC_ROOT not found. It should be something like
+		# "C:\$(programFiles)\Microsoft Visual Studio 11.0\VC"
+		MSVC_ROOT = $(MSVS_ROOT)\VC
+	endif
+	ifeq ($(MSVC_CE),)
+		# Environment variable WP8_SDK not found. It should be something like
+		# "C:\Program Files[ (x86)]\Microsoft Visual Studio 11.0\VC\WPSDK\WP80"
+		# TODO: Lookup in SOFTWARE\Microsoft\Microsoft SDKs\WindowsPhone\v8.0
+		MSVC_CE = $(MSVS_ROOT)\VC\ce
+	endif
+		ifeq ($(WINCE_SDK),)
+		# Environment variable WP8_KIT not found. It should be something like
+		# "c:\Program Files[ (x86)]\Windows Phone Kits\8.0"
+		# TODO: Lookup in SOFTWARE\Microsoft\Microsoft SDKs\WindowsPhone\v8.0
+		WINCE_SDK = C:\$(programFiles)\Windows Mobile 5.0 SDK R2\PocketPC
+	endif
+	ifeq ($(build-platform),cygwin)
+		windows-path = cygpath -w
+	else
+		windows-path = $(native-path)
+	endif
+	windows-java-home := $(shell $(windows-path) "$(JAVA_HOME)")
+	target-format = pe
+	ms_cl_compiler = wince	
+	use-lto = false
+	supports_avian_executable = false
+	aot-only = false
+	system = windows
+	build-system = windows
+	static-prefix =
+	static-suffix = .lib
+	so-prefix =
+	so-suffix = .dll
+	exe-suffix = .exe
+	manifest-flags = -MANIFEST:NO
+
+	ifeq ($(arch),arm)
+		wince_arch = \x86_arm
+		vc_arch = \armv4i
+		sdk_arch = \Armv4i
+		deps_arch = ARM
+		as = "$$(cygpath -u "$(MSVC_CE)\bin\x86_arm\armasm.exe")"
+		cxx = "$$(cygpath -u "$(MSVC_CE)\bin\x86_arm\cl.exe")"
+		ld = "$$(cygpath -u "$(MSVC_CE)\bin\x86_arm\link.exe")"
+		asmflags = -arch  5
+		asm-output = -o $(1)
+		asm-input = $(1)
+		machine_type = ARM
+		bootimage-symbols = binary_bootimage_bin_start:binary_bootimage_bin_end
+		codeimage-symbols = binary_codeimage_bin_start:binary_codeimage_bin_end
+	endif
+
+	PATH := $(shell cygpath -u "$(MSVS_ROOT)\Common7\IDE"):$(shell cygpath -u "$(MSVC_CE)\bin$(wince_arch)"):${PATH}
+
+	build-cflags = $(common-cflags) -I$(src) -I$(inc) -mthreads
+	build-lflags = -L"$(win32)/lib" -lz -lm
+
+	cflags = -nologo \
+		-I"$(shell $(windows-path) "$(root)/libce")" \
+		-I"$(WINCE_SDK)\Include$(sdk_arch)" \
+		-D_USRDLL -D_WINDLL -DNOMINMAX \
+		-D_WIN32_WCE=0x501 -DUNDER_CE -DWIN32_PLATFORM_PSPC -DWINCE \
+		-D_UNICODE -DUNICODE \
+		-D_WINDOWS -DAVIANDLL_EXPORTS -DARM -D_ARM_ \
+		-DAVIAN_VERSION=\"$(version)\" -D_JNI_IMPLEMENTATION_ \
+		-DUSE_ATOMIC_OPERATIONS -DAVIAN_JAVA_HOME=\"$(javahome)\" \
+		-DAVIAN_EMBED_PREFIX=\"$(embed-prefix)\" \
+		-I"$(shell $(windows-path) "$(wince)/msvc/include")" -I$(src) -I$(classpath-src) \
+		-I"$(build)"  -Iinclude \
+		-I"$(windows-java-home)/include" -I"$(windows-java-home)/include/win32" \
+		-DTARGET_BYTES_PER_WORD=$(pointer-size) \
+		-Gm -EHsc -QRarch5 -QRfpe
+
+	common-lflags = $(classpath-lflags)
+
+	ifeq ($(mode),debug)
+		build-type = Debug
+	endif
+	ifeq ($(mode),debug-fast)
+		build-type = Debug
+	endif
+	ifeq ($(mode),stress_major)
+		build-type = Release
+	endif
+	ifeq ($(mode),fast)
+		build-type = Release
+	endif
+	ifeq ($(mode),fast)
+		build-type = Release
+	endif
+	ifeq ($(mode),small)
+		build-type = Release
+	endif
+
+	lflags = $(common-lflags) -nologo \
+		-LIBPATH:"$(MSVC_CE)\lib$(vc_arch)" \
+		-LIBPATH:"$(shell $(windows-path) "$(root)/libce/lib")" \
+		-LIBPATH:"$(shell $(windows-path) "$(wince)/msvc/lib")" \
+		-LIBPATH:"$(WINCE_SDK)\Lib\ARMV4I" \
+		-SUBSYSTEM:"windowsce,5.01"
+			
+	lflags += -NOLOGO -MANIFEST:NO
+	lflags += -NODEFAULTLIB:"oldnames.lib" 
+	lflags += zlibce.lib ws2.lib libce.lib coredll.lib corelibc.lib ole32.lib oleaut32.lib uuid.lib commctrl.lib
+
+	cc = $(cxx)
+	asm-format = masm
+	shared = -dll
+	ar = "$$(cygpath -u "$(MSVC_CE)\bin\x86_arm\lib.exe")"
 	arflags += -nologo
 	ifeq ($(build-platform),cygwin)
 		build-cxx = i686-w64-mingw32-g++

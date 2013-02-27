@@ -1,4 +1,5 @@
 #include <jni.h>
+#include "common.h"
 #include "jni-util.h"
 
 extern "C" JNIEXPORT jdouble JNICALL

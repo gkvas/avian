@@ -215,7 +215,7 @@ public:
       machine = IMAGE_FILE_MACHINE_I386;
       machineMask = IMAGE_FILE_32BIT_MACHINE;
     } else if (Architecture == PlatformInfo::Arm) {
-      machine = IMAGE_FILE_MACHINE_ARMNT;
+      machine = IMAGE_FILE_MACHINE_THUMB;
       machineMask = IMAGE_FILE_32BIT_MACHINE;
     }
 
