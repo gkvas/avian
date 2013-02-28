@@ -16,8 +16,8 @@
 #include "string.h"
 #include "errno.h"
 
-#include "constants.h"
-#include "finder.h"
+#include "avian/constants.h"
+#include "avian/finder.h"
 #include <avian/util/stream.h>
 
 #include "io.h"
@@ -669,6 +669,7 @@ class MemberIterator {
           assert(member->type == Object::Scalar);
           offset_ = ((offset_ + size_) + (BytesPerWord - 1))
             & ~(BytesPerWord - 1);
+          alignment_ = BytesPerWord;
           member = 0;
         }
 
