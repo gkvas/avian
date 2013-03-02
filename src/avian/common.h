@@ -29,6 +29,10 @@
 
 // don't complain about using 'this' in member initializers:
 #  pragma warning(disable:4355)
+// don't complain about nonstandard extension: zero sized array
+#  pragma warning(disable:4200)
+// ignore: forcing value to bool 'true' or 'false' (performance warning)
+#  pragma warning(disable:4800)
 
 typedef char int8_t;
 typedef unsigned char uint8_t;
@@ -96,6 +100,10 @@ typedef uint64_t uintptr_t;
 #    define ARCH_x86_64
 #    define BYTES_PER_WORD 8
 #  elif (defined _M_ARM_FP) || (defined WINCE)
+#ifdef WINCE
+#  include <windows.h>
+#  include <wince.h>
+#endif
 typedef int32_t intptr_t;
 typedef uint32_t uintptr_t;
 #    define UINT64_C(x) x##LL
@@ -238,11 +246,7 @@ alias(void* p, unsigned offset)
 inline int
 vsnprintf(char* dst, size_t size, const char* format, va_list a)
 {
-#ifdef WINCE
-  return _vsnprintf(dst, size, format, a);
-#else
   return vsnprintf_s(dst, size, _TRUNCATE, format, a);
-#endif
 }
 
 inline int
@@ -255,20 +259,15 @@ snprintf(char* dst, size_t size, const char* format, ...)
   return r;
 }
 
-
 inline FILE*
 fopen(const char* name, const char* mode)
 {
-#ifndef WINCE
   FILE* file;
   if (fopen_s(&file, name, mode) == 0) {
     return file;
   } else {
     return 0;
   }
-#else
-	return ::fopen(name, mode);
-#endif
 }
 
 #else // not _MSC_VER

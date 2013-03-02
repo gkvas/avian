@@ -44,7 +44,7 @@ namespace {
 
 namespace local {
 
-const bool DebugCompile = false;
+const bool DebugCompile = true;
 const bool DebugNatives = false;
 const bool DebugCallTable = false;
 const bool DebugMethodTree = false;
@@ -9329,7 +9329,6 @@ class MyProcessor: public Processor {
     if (codeAllocator.base == 0) {
       codeAllocator.base = static_cast<uint8_t*>
         (s->tryAllocateExecutable(ExecutableAreaSizeInBytes));
-	  expect(t, codeAllocator.base);
       codeAllocator.capacity = ExecutableAreaSizeInBytes;
     }
 #endif

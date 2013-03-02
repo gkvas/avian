@@ -176,6 +176,7 @@ doWrite(JNIEnv* e, jint fd, const jbyte* data, jint length)
   }
 }
 
+
 #ifdef PLATFORM_WINDOWS
 
 class Directory {
@@ -858,7 +859,7 @@ Java_java_io_RandomAccessFile_readBytes(JNIEnv* e, jclass, jlong peer,
   uint8_t* dst = reinterpret_cast<uint8_t*>
     (e->GetPrimitiveArrayCritical(buffer, 0));
 
-  long bytesRead = ::read(fd, dst + offset, length);
+  ssize_t bytesRead = ::read(fd, dst + offset, length);
   e->ReleasePrimitiveArrayCritical(buffer, dst, 0);
   
   if(bytesRead == -1) {

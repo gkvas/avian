@@ -25,13 +25,12 @@
 
 #include "assert.h"
 
-#  define UNREACHABLE abort()
+#define UNREACHABLE abort()
 
 #ifdef _MSC_VER
 #  define UNUSED
 #else
 #  define UNUSED __attribute__((unused))
-
 #endif
 
 inline void operator delete(void*) { abort(); }

@@ -8,8 +8,6 @@
    There is NO WARRANTY for this software.  See license.txt for
    details. */
 
-
-
 #include "sys/stat.h"
 #include "windows.h"
 #include "sys/timeb.h"
@@ -729,8 +727,8 @@ class MySystem: public System {
     bool success UNUSED = DuplicateHandle
       (GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(),
        &(t->thread), 0, false, DUPLICATE_SAME_ACCESS);
-	assert(this, success);
-#endif    
+    assert(this, success);
+#endif
     r->attach(t);
     return 0;
   }
@@ -933,8 +931,8 @@ class MySystem: public System {
       return copy(allocator, name);
     } else {
       TCHAR buffer[MAX_PATH];
-      GetCurrentDirectory(MAX_PATH, buffer);  
-	  return append(allocator, buffer, "\\", name);
+      GetCurrentDirectory(MAX_PATH, buffer);
+      return append(allocator, buffer, "\\", name);
     }
 #else
     #pragma message("TODO:http://lunarfrog.com/blog/2012/05/21/winrt-folders-access/ Windows.ApplicationModel.Package.Current.InstalledLocation")
@@ -1040,10 +1038,8 @@ class MySystem: public System {
 
   HANDLE mutex;
   SignalHandler* handlers[HandlerCount];
-#if (!defined(WINAPI_FAMILY) || WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)) && !defined(WINCE)
+#if (!defined(WINAPI_FAMILY) || WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP))
   LPTOP_LEVEL_EXCEPTION_FILTER oldHandler;
-#else
-  void* oldHandler;
 #endif
   const char* crashDumpDirectory;
 };

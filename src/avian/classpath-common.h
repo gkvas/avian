@@ -13,6 +13,10 @@
 
 #include <avian/util/string.h>
 #include <avian/util/runtime-array.h>
+#ifdef WINCE
+#  include <windows.h>
+#  include <wince.h>
+#endif
 
 using namespace avian::util;
 
@@ -328,7 +332,7 @@ translateInvokeResult(Thread* t, unsigned returnCode, object o)
     return makeDouble(t, longValue(t, o));
 
   default:
-    abort(t);
+	abort(t);
   }
 }
 
@@ -540,7 +544,11 @@ invoke(Thread* t, object method, object instance, object args)
       } break;
 
       default:
-        abort();
+#ifndef WINCE
+		::abort();
+#else 
+		exit(3);
+#endif
       }
 
       object arg = objectArrayBody(t, args, i++);
