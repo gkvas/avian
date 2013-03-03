@@ -134,8 +134,42 @@ usageAndExit(const char* name)
 
 } // namespace
 
+#ifdef WINCE
+
+char *g = 0;
+
+extern char** _environ;
+
+LONG handleException(LPEXCEPTION_POINTERS e) {
+
+	CONTEXT *xc = e->ContextRecord;
+
+	printf("PC %i\n", xc->Pc);
+    xc->Pc += 4;
+	printf("PC %i\n", xc->Pc);
+	return EXCEPTION_CONTINUE_EXECUTION;
+}
+
+int wincemain(int ac, const char** av);
+
+int main(int ac, const char** av)
+{
+	SetUnhandledExceptionFilter(handleException);
+
+	__try {
+	    wincemain(ac, av);
+	}
+	__except ( topLevelFilter(GetExceptionInformation()) )    
+	{
+
+	}
+}
+
 int
-main(int ac, const char** av)
+wincemain(int ac, const char** av)
+#else
+int main(int ac, const char** av)
+#endif
 {
   JavaVMInitArgs vmArgs;
   vmArgs.version = JNI_VERSION_1_2;
@@ -147,6 +181,8 @@ main(int ac, const char** av)
   int argc = 0;
   const char** argv = 0;
   const char* classpath = ".";
+
+  *g = 'c';
 
   for (int i = 1; i < ac; ++i) {
     if (strcmp(av[i], "-cp") == 0

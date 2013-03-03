@@ -661,7 +661,7 @@ class MySystem: public System {
 
 #if !defined(WINAPI_FAMILY) || WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
       if (oldHandler == 0) {
-#  ifdef ARCH_x86_32
+#  if (defined ARCH_x86_32) || (defined ARCH_arm) 
         oldHandler = SetUnhandledExceptionFilter(handleException);
 #  elif defined ARCH_x86_64
         AddVectoredExceptionHandler(1, handleException);
@@ -678,7 +678,7 @@ class MySystem: public System {
 
       if (not findHandler()) {
 #if !defined(WINAPI_FAMILY) || WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
-#  ifdef ARCH_x86_32
+#  if (defined ARCH_x86_32) || (defined ARCH_arm) 
         SetUnhandledExceptionFilter(oldHandler);
         oldHandler = 0;
 #  elif defined ARCH_x86_64
@@ -1140,7 +1140,7 @@ handleException(LPEXCEPTION_POINTERS e)
     void* ip = reinterpret_cast<void*>(e->ContextRecord->Pc);
     void* base = reinterpret_cast<void*>(e->ContextRecord->Lr);
     void* stack = reinterpret_cast<void*>(e->ContextRecord->Sp);
-    void* thread = reinterpret_cast<void*>(e->ContextRecord->R12);
+    void* thread = reinterpret_cast<void*>(e->ContextRecord->R8);
 #endif
 
     bool jump = handler->handleSignal(&ip, &base, &stack, &thread);
@@ -1159,7 +1159,7 @@ handleException(LPEXCEPTION_POINTERS e)
     e->ContextRecord->Pc = reinterpret_cast<DWORD>(ip);
     e->ContextRecord->Lr = reinterpret_cast<DWORD>(base);
     e->ContextRecord->Sp = reinterpret_cast<DWORD>(stack);
-    e->ContextRecord->R12 = reinterpret_cast<DWORD>(thread);
+    e->ContextRecord->R8 = reinterpret_cast<DWORD>(thread);
 #endif
 
     if (jump) {

@@ -2496,14 +2496,18 @@ class MyAssembler: public Assembler {
   virtual void checkStackOverflow(uintptr_t handler,
                                   unsigned stackLimitOffsetFromThread)
   {
-    lir::Register stack(StackRegister);
-    lir::Memory stackLimit(ThreadRegister, stackLimitOffsetFromThread);
-    lir::Constant handlerConstant(new(con.zone) ResolvedPromise(handler));
-    branchRM(&con, lir::JumpIfGreaterOrEqual, TargetBytesPerWord, &stack, &stackLimit,
-             &handlerConstant);
+    //lir::Register stack(StackRegister);
+    //lir::Memory stackLimit(ThreadRegister, stackLimitOffsetFromThread);
+    //lir::Constant handlerConstant(new(con.zone) ResolvedPromise(handler));
+    //branchRM(&con, lir::JumpIfGreaterOrEqual, TargetBytesPerWord, &stack, &stackLimit,
+    //        &handlerConstant);
   }
 
   virtual void saveFrame(unsigned stackOffset, unsigned ipOffset) {
+	emit(&con, mov(3, 3));
+	emit(&con, mov(3, 3));
+	emit(&con, mov(3, 3));    
+
     lir::Register link(LinkRegister);
     lir::Memory linkDst(ThreadRegister, ipOffset);
     moveRM(&con, TargetBytesPerWord, &link, TargetBytesPerWord, &linkDst);
@@ -2571,6 +2575,10 @@ class MyAssembler: public Assembler {
     // how to handle them:
     assert(&con, footprint < 256);
 
+	emit(&con, mov(4, 4));
+	emit(&con, mov(4, 4));
+	emit(&con, mov(4, 4));  
+
     lir::Register stack(StackRegister);
     ResolvedPromise footprintPromise(footprint * TargetBytesPerWord);
     lir::Constant footprintConstant(&footprintPromise);
@@ -2584,6 +2592,10 @@ class MyAssembler: public Assembler {
   }
 
   virtual void adjustFrame(unsigned difference) {
+	emit(&con, mov(2, 2));
+	emit(&con, mov(2, 2));
+	emit(&con, mov(2, 2));
+
     lir::Register stack(StackRegister);
     ResolvedPromise differencePromise(difference * TargetBytesPerWord);
     lir::Constant differenceConstant(&differencePromise);
@@ -2591,6 +2603,10 @@ class MyAssembler: public Assembler {
   }
 
   virtual void popFrame(unsigned footprint) {
+	emit(&con, mov(1, 1));
+	emit(&con, mov(1, 1));
+	emit(&con, mov(1, 1));
+
     footprint += FrameHeaderSize;
 
     lir::Register returnAddress(LinkRegister);
@@ -2647,6 +2663,8 @@ class MyAssembler: public Assembler {
                                                 unsigned argumentFootprint)
   {
     popFrame(frameFootprint);
+	emit(&con, mov(5, 5));
+	emit(&con, mov(5, 5));
 
     assert(&con, argumentFootprint >= StackAlignmentInWords);
     assert(&con, (argumentFootprint % StackAlignmentInWords) == 0);
@@ -2670,6 +2688,8 @@ class MyAssembler: public Assembler {
                                                unsigned stackOffsetFromThread)
   {
     popFrame(frameFootprint);
+	emit(&con, mov(6, 6));
+	emit(&con, mov(6, 6));
 
     lir::Register stack(StackRegister);
     lir::Memory newStackSrc(ThreadRegister, stackOffsetFromThread);
